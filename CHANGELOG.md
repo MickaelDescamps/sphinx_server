@@ -1,0 +1,17 @@
+# Changelog
+
+All notable changes to `sphinx-server` are documented here.
+
+The project adheres to [Semantic Versioning](https://semver.org/) and to [keep a changelog project](https://keepachangelog.com/en/1.1.0/)
+
+## [0.1.0] - 2025-11-09
+
+
+### Added
+- FastAPI control panel that boots the administrator UI and docs explorer, wires in the build queue plus auto-build monitor, and serves published artifacts directly under `/artifacts`.
+- Administrator dashboard for registering repositories with provider metadata, docs paths, personal access tokens, or SSH deploy keys; manage tracked branches/tags, trigger builds manually, bulk delete/build, and mark a primary ref whose metadata (name/version/summary/homepage) is surfaced to readers.
+- Git integration layer that clones/fetches repositories with token injection or ephemeral SSH keys, lists available remote refs, and records the latest SHA per tracked target so rebuilds only fire when necessary.
+- Build execution pipeline that provisions isolated uv-managed virtual environments per job, installs `sphinx` plus project doc/dev extras or requirements files, runs `sphinx-build`, captures logs, measures durations, and injects a lightweight navigation script into every generated HTML page.
+- Background `AutoBuildMonitor` that polls remote refs via `git ls-remote`, skips duplicates when builds are already queued/running, and enqueues fresh builds whenever tracked branches/tags advance.
+- Public documentation explorer that lists every onboarded repository, highlights the latest successful artifact per tracked ref, and exposes JSON endpoints for embedding build/ref metadata in other UIs.
+- CLI entry point (`sphinx-server`) powered by uvicorn plus `.env`-driven configuration for host/port, workspace/layout directories, database URL, process pool size, Git/Sphinx timeouts, and other operational knobs.
