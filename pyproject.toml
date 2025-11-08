@@ -1,10 +1,11 @@
 [project]
 name = "sphinx-server"
 version = "0.1.0"
-description = "Add your description here"
+description = "Application to track repository with sphinx documentation, build documentation on all branch and tags tracked and host it accross a webpage to explore it."
 readme = "README.md"
+changelog="CHANGELOG.md"
 authors = [
-    { name = "Mickaël Descamps", email = "mickael.descamps@enerfox.fr" }
+    { name = "Mickaël Descamps", email = "mickael.descamps@mineyou.fr" }
 ]
 requires-python = ">=3.10"
 dependencies = [
