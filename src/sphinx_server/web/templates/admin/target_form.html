@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Edit target for {{ repo.name }}</h2>
+<form method="post" action="/admin/targets/{{ target.id }}/edit">
+    <label>Reference type
+        <select name="ref_type">
+            <option value="branch" {% if target.ref_type == 'branch' %}selected{% endif %}>Branch</option>
+            <option value="tag" {% if target.ref_type == 'tag' %}selected{% endif %}>Tag</option>
+        </select>
+    </label>
+    <label>Reference name<input type="text" name="ref_name" value="{{ target.ref_name }}" required></label>
+    <label><input type="checkbox" name="auto_build" {% if target.auto_build %}checked{% endif %}> Auto build on webhook</label>
+    <button type="submit">Save</button>
+    <a class="button button-outline" href="/admin/repos/{{ repo.id }}">Cancel</a>
+</form>
+{% endblock %}

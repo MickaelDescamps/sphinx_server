@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% from "admin/_provider_label.html" import provider_badge %}
+{% block content %}
+<h2>{{ repo.name }}</h2>
+<p>{{ repo.description }}</p>
+<p><strong>URL:</strong> <a href="{{ repo.url }}" target="_blank">{{ repo.url }}</a></p>
+<p><strong>Provider:</strong> {{ provider_badge(repo.provider) }}</p>
+<p><strong>Docs path:</strong> {{ repo.docs_path }}</p>
+
+<div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center;">
+    <a class="button" href="/admin/repos/{{ repo.id }}/edit">Edit repository</a>
+    <form method="post" action="/admin/repos/{{ repo.id }}/delete" onsubmit="return confirm('Delete repository {{ repo.name }}?');">
+        <button type="submit" class="button button-outline">Delete repository</button>
+    </form>
+</div>
+
+<section>
+    <h3>Tracked targets</h3>
+    {% if repo.tracked_targets %}
+    <table class="target-table">
+        <thead><tr><th><input type="checkbox" id="select-all"></th><th>Reference</th><th>Auto build?</th><th>Last SHA</th><th>Primary</th><th>Actions</th></tr></thead>
+        <tbody>
+        {% for target in repo.tracked_targets %}
+            <tr>
+                <td><input type="checkbox" value="{{ target.id }}" class="target-checkbox"></td>
+                    {% set ref_label = 'Branch' if target.ref_type == 'branch' else 'Tag' %}
+                    <td><span class="ref-label {{ target.ref_type }}">{{ ref_label }}</span>{{ target.ref_name }}</td>
+                    <td>{{ 'Yes' if target.auto_build else 'No' }}</td>
+                    <td>{{ target.last_sha or '-' }}</td>
+                    <td>
+                    {% if repo.primary_target_id == target.id %}
+                        <span class="primary-chip">Primary</span>
+                    {% else %}
+                        <form method="post" action="/admin/repos/{{ repo.id }}/primary" style="display:inline-block;">
+                            <input type="hidden" name="target_id" value="{{ target.id }}">
+                            <button type="submit">Set primary</button>
+                        </form>
+                    {% endif %}
+                </td>
+                    <td>
+                        <form method="post" action="/admin/targets/{{ target.id }}/build" style="display:inline-block;">
+                            <button type="submit">Build</button>
+                    </form>
+                    <a class="button button-outline" href="/admin/targets/{{ target.id }}/edit">Edit</a>
+                    <form method="post" action="/admin/targets/{{ target.id }}/delete" style="display:inline-block;" onsubmit="return confirm('Delete target {{ target.ref_name }}?');">
+                        <button type="submit">Delete</button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <form method="post" action="/admin/targets/bulk" id="bulk-form" style="margin-top:0.75rem; display:flex; gap:0.5rem;">
+        <input type="hidden" name="repo_id" value="{{ repo.id }}" />
+        <input type="hidden" name="action" id="bulk-action" value="" />
+        <button type="button" class="button" onclick="submitBulk('build')">Build selected</button>
+        <button type="button" class="button button-outline" onclick="submitBulk('delete')">Delete selected</button>
+    </form>
+    {% else %}
+        <p>No tracked references yet.</p>
+    {% endif %}
+</section>
+
+<section>
+    <h3>Add target</h3>
+    <form method="post" action="/admin/repos/{{ repo.id }}/targets">
+        <label>Reference type
+            <select name="ref_type">
+                <option value="branch">Branch</option>
+                <option value="tag">Tag</option>
+            </select>
+        </label>
+        <label>Reference name<input type="text" name="ref_name" required list="ref-options"></label>
+        <datalist id="ref-options"></datalist>
+        <div id="ref-status" class="muted"></div>
+        <div class="ref-browser" id="ref-browser" hidden>
+            <div id="ref-filter-wrapper">
+                <label class="muted">Filter references
+                    <input type="text" id="ref-filter" placeholder="Search...">
+                </label>
+            </div>
+            <div class="ref-browser-results" id="ref-results"></div>
+        </div>
+        <button type="button" id="load-refs">Load available references</button>
+        <label><input type="checkbox" name="auto_build" checked> Auto build on webhook</label>
+        <button type="submit">Add</button>
+    </form>
+</section>
+
+<section>
+    <h3>Build history</h3>
+    {% if builds %}
+    <form method="post" action="/admin/repos/{{ repo.id }}/builds/clear" onsubmit="return confirm('Clear all builds for this repository?');">
+        <button type="submit" class="button button-outline">Clear build history</button>
+    </form>
+    <table>
+        <thead><tr><th>Target</th><th>Status</th><th>Trigger</th><th>Duration</th><th>Artifact</th><th>Log</th><th></th></tr></thead>
+        <tbody id="build-table-body">
+        {% for build in builds %}
+            {% set status_value = build.status.replace('BuildStatus.', '').lower() %}
+            <tr data-build-id="{{ build.id }}">
+                {% set ref_type = build.target.ref_type if build.target else 'branch' %}
+                {% set ref_label = 'Branch' if ref_type == 'branch' else 'Tag' %}
+                <td>
+                    {% if build.target %}<span class="ref-label {{ ref_type }}">{{ ref_label }}</span>{% endif %}
+                    {{ build.ref_name }}
+                </td>
+                {% set status_label = build.status.replace('BuildStatus.', '').replace('_', ' ') %}
+                <td><span class="status-label status-{{ status_value }}" data-build-status>{{ status_label }}</span></td>
+                <td data-trigger-cell>{{ build.triggered_by or 'manual' }}</td>
+                <td data-duration-cell>{{ '%.1fs' % build.duration_seconds if build.duration_seconds else '-' }}</td>
+                <td data-artifact-cell>
+                    {% if build.artifact_path %}
+                        <a href="/artifacts/{{ build.repository_id }}/{{ build.target.slug() }}/index.html" target="_blank">Open docs</a>
+                    {% else %}-{% endif %}
+                </td>
+                <td data-log-cell>
+                    {% if build.log_path %}
+                        <a href="/admin/builds/{{ build.id }}/log">View log</a>
+                    {% else %}-{% endif %}
+                </td>
+                <td>
+                    <form method="post" action="/admin/builds/{{ build.id }}/delete" onsubmit="return confirm('Delete build {{ build.id }} and remove artifacts?');">
+                        <button type="submit">Delete</button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p>No builds recorded yet.</p>
+    {% endif %}
+</section>
+<script>
+(() => {
+    const repoId = {{ repo.id }};
+    const tbody = document.getElementById('build-table-body');
+    let buildToken = null;
+
+    function buildRow(build) {
+        const refLabel = build.ref_type === 'tag' ? 'Tag' : 'Branch';
+        const refBadge = build.ref_type
+            ? `<span class="ref-label ${build.ref_type}">${refLabel}</span>`
+            : '';
+        const artifactCell = build.artifact_url
+            ? `<a href="${build.artifact_url}" target="_blank">Open docs</a>`
+            : '-';
+        const logCell = build.log_url
+            ? `<a href="${build.log_url}">View log</a>`
+            : '-';
+        return `
+        <tr data-build-id="${build.id}">
+            <td>${refBadge} ${build.ref_name || ''}</td>
+            <td><span class="status-label status-${build.status_label.toLowerCase()}">${build.status_label}</span></td>
+            <td>${build.triggered_by || 'manual'}</td>
+            <td>${build.duration_label || '-'}</td>
+            <td data-artifact-cell>${artifactCell}</td>
+            <td data-log-cell>${logCell}</td>
+            <td>
+                <form method="post" action="/admin/builds/${build.id}/delete" onsubmit="return confirm('Delete build ${build.id} and remove artifacts?');">
+                    <button type="submit">Delete</button>
+                </form>
+            </td>
+        </tr>`;
+    }
+
+    function renderBuilds(builds) {
+        if (!tbody) return;
+        tbody.innerHTML = builds.map(buildRow).join('');
+    }
+
+    async function pollBuilds() {
+        try {
+            const url = buildToken
+                ? `/admin/repos/${repoId}/builds.json?token=${buildToken}`
+                : `/admin/repos/${repoId}/builds.json`;
+            const resp = await fetch(url, { headers: { 'accept': 'application/json' } });
+            if (resp.status === 204) {
+                buildToken = resp.headers.get('X-Build-Token') || buildToken;
+                return;
+            }
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (data.token) {
+                buildToken = data.token;
+            }
+            if (!data.builds) return;
+            renderBuilds(data.builds);
+        } catch (err) {
+            console.warn('Failed to refresh builds', err);
+        }
+    }
+
+    pollBuilds();
+    setInterval(pollBuilds, 500);
+})();
+
+const selectAll = document.getElementById('select-all');
+function getCheckboxes() {
+    return document.querySelectorAll('.target-checkbox');
+}
+if (selectAll) {
+    selectAll.addEventListener('change', () => {
+        getCheckboxes().forEach((checkbox) => {
+            checkbox.checked = selectAll.checked;
+        });
+    });
+}
+
+function submitBulk(action) {
+    const form = document.getElementById('bulk-form');
+    if (!form) return;
+    const selected = Array.from(getCheckboxes()).filter((checkbox) => checkbox.checked);
+    if (!selected.length) {
+        alert('Select at least one target.');
+        return;
+    }
+    form.querySelectorAll('input[name="target_ids"]').forEach((node) => node.remove());
+    selected.forEach((checkbox) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'target_ids';
+        input.value = checkbox.value;
+        form.appendChild(input);
+    });
+    document.getElementById('bulk-action').value = action;
+    form.submit();
+}
+
+(() => {
+    const loadBtn = document.getElementById('load-refs');
+    if (!loadBtn) return;
+    const typeSelect = document.querySelector('select[name="ref_type"]');
+    const refInput = document.querySelector('input[name="ref_name"]');
+    const datalist = document.getElementById('ref-options');
+    const status = document.getElementById('ref-status');
+    const browser = document.getElementById('ref-browser');
+    const filterInput = document.getElementById('ref-filter');
+    const filterWrapper = document.getElementById('ref-filter-wrapper');
+    const resultsBox = document.getElementById('ref-results');
+    let refs = [];
+
+    function render(list) {
+        datalist.innerHTML = '';
+        resultsBox.innerHTML = '';
+        list.forEach((ref) => {
+            const option = document.createElement('option');
+            option.value = ref.name;
+            datalist.appendChild(option);
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.innerHTML = `<strong>${ref.type.toUpperCase()}</strong><span>${ref.name}</span>`;
+            btn.addEventListener('click', () => {
+                refInput.value = ref.name;
+                typeSelect.value = ref.type;
+            });
+            resultsBox.appendChild(btn);
+        });
+        browser.hidden = list.length === 0;
+        if (filterWrapper) {
+            filterWrapper.hidden = refs.length <= 10;
+        }
+    }
+
+    filterInput.addEventListener('input', () => {
+        const query = filterInput.value.toLowerCase();
+        const filtered = refs.filter((ref) =>
+            ref.name.toLowerCase().includes(query) || ref.type.toLowerCase().includes(query)
+        );
+        render(filtered);
+    });
+
+    loadBtn.addEventListener('click', async () => {
+        status.textContent = 'Loading references...';
+        try {
+            const endpoints = [
+                fetch(`/admin/repos/{{ repo.id }}/refs?ref_type=branch`),
+                fetch(`/admin/repos/{{ repo.id }}/refs?ref_type=tag`),
+            ];
+            const responses = await Promise.all(endpoints);
+            const data = await Promise.all(responses.map((resp) => resp.ok ? resp.json() : Promise.reject()));
+            const [branches, tags] = data;
+            refs = [
+                ...(branches.refs || []).map((name) => ({ type: 'branch', name })),
+                ...(tags.refs || []).map((name) => ({ type: 'tag', name })),
+            ];
+            status.textContent = refs.length ? `${refs.length} references loaded` : 'No references found';
+            render(refs);
+        } catch (err) {
+            status.textContent = 'Unable to load references';
+        }
+    });
+})();
+</script>
+{% endblock %}

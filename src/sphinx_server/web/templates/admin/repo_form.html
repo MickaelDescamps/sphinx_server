@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ title or "Repository" }}</h2>
+<form method="post" action="{{ action_url }}">
+    <label>Name<input type="text" name="name" value="{{ repo.name if repo else '' }}" required></label>
+    <label>Provider
+        <select name="provider">
+            {% set provider = repo.provider if repo else 'github' %}
+            <option value="github" {% if provider == 'github' %}selected{% endif %}>GitHub</option>
+            <option value="gitlab" {% if provider == 'gitlab' %}selected{% endif %}>GitLab</option>
+            <option value="generic" {% if provider == 'generic' %}selected{% endif %}>Generic Git</option>
+        </select>
+    </label>
+    <label>Repository URL<input type="url" name="url" value="{{ repo.url if repo else '' }}" required></label>
+    <label>Description<textarea name="description">{{ repo.description if repo else '' }}</textarea></label>
+    <label>Default branch<input type="text" name="default_branch" placeholder="main" value="{{ repo.default_branch if repo else '' }}"></label>
+    <label>Docs path<input type="text" name="docs_path" value="{{ repo.docs_path if repo else 'docs' }}"></label>
+    <label>Access token<input type="password" name="auth_token" value="{{ repo.auth_token if repo else '' }}"></label>
+    <label>Deploy key (SSH)
+        <textarea name="deploy_key" id="deploy-key" placeholder="Paste private key"></textarea>
+        <small class="muted">Provide a repo-specific SSH key (leave blank to keep existing).</small>
+    </label>
+    <div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.5rem;">
+        <label style="margin:0;">Algorithm
+            <select id="ssh-algorithm">
+                <option value="ssh-ed25519">ssh-ed25519</option>
+                <option value="ssh-rsa">ssh-rsa</option>
+                <option value="ssh-mlkem768x25519-sha256">ssh-mlkem768x25519-sha256</option>
+            </select>
+        </label>
+        <button type="button" id="generate-key">Generate deploy key</button>
+    </div>
+    <div id="public-key-wrapper" style="display:none;">
+        <label>Public key to add on Git host
+            <textarea id="public-key" readonly></textarea>
+        </label>
+    </div>
+    <button type="submit">Save</button>
+</form>
+<script>
+(function () {
+    const generateBtn = document.getElementById('generate-key');
+    const deployTextarea = document.getElementById('deploy-key');
+    const algSelect = document.getElementById('ssh-algorithm');
+    const publicWrapper = document.getElementById('public-key-wrapper');
+    const publicTextarea = document.getElementById('public-key');
+    if (!generateBtn) return;
+
+    generateBtn.addEventListener('click', async () => {
+        generateBtn.disabled = true;
+        generateBtn.textContent = 'Generating...';
+        const formData = new FormData();
+        formData.append('algorithm', algSelect.value);
+        try {
+            const resp = await fetch('/admin/ssh-key', { method: 'POST', body: formData });
+            if (!resp.ok) {
+                throw new Error('Failed to generate key');
+            }
+            const data = await resp.json();
+            deployTextarea.value = data.private_key || '';
+            publicTextarea.value = data.public_key || '';
+            publicWrapper.style.display = 'block';
+        } catch (err) {
+            alert('Unable to generate SSH key: ' + err.message);
+        } finally {
+            generateBtn.disabled = false;
+            generateBtn.textContent = 'Generate deploy key';
+        }
+    });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title or "Sphinx Server" }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/milligram@1.4.1/dist/milligram.min.css">
+    <style>
+        body { margin: 2rem; }
+        nav { margin-bottom: 2rem; }
+        .status-label { display:inline-flex; align-items:center; justify-content:center; padding:0.35rem 0.85rem; border-radius:999px; font-size:0.78rem; font-weight:600; min-width:90px; text-transform:uppercase; letter-spacing:0.05em; }
+        .status-success { background:#2ecc71; color:#fff; }
+        .status-failed { background:#e74c3c; color:#fff; }
+        .status-running { background:#f1c40f; color:#000; animation:pulse 1.2s ease-in-out infinite; }
+        .status-queued { background:#7f8c8d; color:#fff; }
+        table { width: 100%; }
+        .muted { color: #7f8c8d; font-size: 0.85rem; }
+        .ref-label { display:inline-flex; align-items:center; justify-content:center; padding:0.4rem 0.9rem; border-radius:999px; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.08em; margin-right:0.5rem; background:#dfe6e9; color:#2d3436; min-width:80px; }
+        .ref-label.branch { background:#c8e6c9; color:#1b5e20; }
+        .ref-label.tag { background:#ffe0b2; color:#e65100; }
+        .provider-label { display:inline-flex; align-items:center; gap:0.35rem; padding:0.35rem 0.8rem; border-radius:999px; font-size:0.8rem; text-transform:capitalize; background:#ecf0f1; color:#2c3e50; }
+        .provider-label img { width:18px; height:18px; }
+        .primary-chip { display:inline-flex; align-items:center; padding:0.25rem 0.6rem; border-radius:999px; font-size:0.7rem; background:#e0f7fa; color:#006064; text-transform:uppercase; letter-spacing:0.05em; }
+        .ref-browser { margin-top:0.5rem; border:1px solid #dfe6e9; border-radius:8px; padding:0.5rem; }
+        .ref-browser-results { max-height:220px; overflow-y:auto; display:grid; gap:0.35rem; margin-top:0.5rem; }
+        .ref-browser-results button { border:1px solid #ccd6dd; border-radius:6px; padding:0.45rem 0.6rem; background:#fff; cursor:pointer; text-align:left; font-weight:600; color:#2d3436; box-shadow:0 1px 2px rgba(0,0,0,0.05); display:flex; justify-content:space-between; }
+        .ref-browser-results button span { font-weight:400; color:#636e72; }
+        .ref-browser-results button:hover { background:#f7faff; }
+        .target-table { width:100%; }
+        .repo-card { border:1px solid #ecf0f1; border-radius:12px; padding:1.5rem; margin-bottom:1.5rem; }
+        .repo-card h3 { display:flex; align-items:center; gap:0.5rem; }
+        .repo-version { font-size:0.85rem; color:#636e72; }
+
+        @keyframes pulse {
+            0% { opacity:0.5; }
+            50% { opacity:1; }
+            100% { opacity:0.5; }
+        }
+    </style>
+</head>
+<body>
+<nav>
+    <a href="/">Docs explorer</a> |
+    <a href="/admin">Admin</a>
+</nav>
+<main>
+    {% block content %}{% endblock %}
+</main>
+</body>
+</html>

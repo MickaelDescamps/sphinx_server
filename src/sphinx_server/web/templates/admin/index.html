@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "admin/_provider_label.html" import provider_badge %}
+{% block content %}
+<h2>Repositories</h2>
+<p><a class="button" href="/admin/repos/new">Add repository</a></p>
+<table>
+    <thead>
+        <tr><th>Name</th><th>Provider</th><th>Docs path</th><th>Tracked targets</th></tr>
+    </thead>
+    <tbody>
+    {% for repo in repos %}
+        <tr>
+            <td><a href="/admin/repos/{{ repo.id }}">{{ repo.name }}</a><br><span class="muted">{{ repo.url }}</span></td>
+            <td>{{ provider_badge(repo.provider) }}</td>
+            <td>{{ repo.docs_path }}</td>
+            <td>{{ repo.tracked_targets|length }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+<h3>Latest builds</h3>
+<table>
+    <thead><tr><th>Repository</th><th>Target</th><th>Status</th><th>Trigger</th><th>Duration</th><th>Finished</th></tr></thead>
+    <tbody>
+    {% for build in builds %}
+        <tr>
+            <td>{{ build.repository.name }}</td>
+            {% set ref_type = build.target.ref_type if build.target else 'branch' %}
+            {% set ref_label = 'Branch' if ref_type == 'branch' else 'Tag' %}
+            <td>
+                {% if build.target %}<span class="ref-label {{ ref_type }}">{{ ref_label }}</span>{% endif %}
+                {{ build.ref_name }}
+            </td>
+            {% set status_value = build.status.replace('BuildStatus.', '').lower() %}
+            {% set status_label = build.status.replace('BuildStatus.', '').replace('_', ' ') %}
+            <td><span class="status-label status-{{ status_value }}">{{ status_label }}</span></td>
+            <td>{{ build.triggered_by or 'manual' }}</td>
+            <td>{{ '%.1fs' % build.duration_seconds if build.duration_seconds else '-' }}</td>
+            <td>{{ build.finished_at or 'pending' }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

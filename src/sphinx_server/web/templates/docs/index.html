@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Tracked documentation</h2>
+{% for repo in repos %}
+    <section class="repo-card">
+        <h3>
+            {{ repo.project_name or repo.name }}
+            {% if repo.project_version %}<span class="repo-version">v{{ repo.project_version }}</span>{% endif %}
+        </h3>
+        {% if repo.project_summary %}
+            <p class="muted">{{ repo.project_summary }}</p>
+        {% elif repo.description %}
+            <p class="muted">{{ repo.description }}</p>
+        {% endif %}
+        {% if repo.project_homepage %}
+            <p><a href="{{ repo.project_homepage }}" target="_blank">Homepage</a></p>
+        {% endif %}
+        <ul>
+            {% for target in repo.tracked_targets %}
+                {% set ref_label = 'Branch' if target.ref_type == 'branch' else 'Tag' %}
+                {% set builds = build_map.get(target.id, []) %}
+                {% set latest = latest_artifacts.get(target.id) %}
+                <li>
+                    <span class="ref-label {{ target.ref_type }}">{{ ref_label }}</span>
+                    <strong>{{ target.ref_name }}</strong>
+                    {% if repo.primary_target_id == target.id %}
+                        <span class="primary-chip">Primary</span>
+                    {% endif %}
+                    {% if latest %}
+                        - <a href="/artifacts/{{ repo.id }}/{{ target.slug() }}/index.html" target="_blank">Open docs</a>
+                        (<a href="/docs/{{ repo.id }}/{{ target.id }}">{{ builds|length }} builds</a>)
+                    {% else %}
+                        - no builds yet
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    </section>
+{% else %}
+    <p>No repositories configured.</p>
+{% endfor %}
+{% endblock %}

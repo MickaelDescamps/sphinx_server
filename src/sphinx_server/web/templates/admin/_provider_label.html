@@ -1,0 +1,19 @@
+{% macro provider_badge(provider) %}
+    {% set provider = provider or 'generic' %}
+    {% set icon_map = {
+        'github': 'https://cdn.jsdelivr.net/npm/simple-icons@v10/icons/github.svg',
+        'gitlab': 'https://cdn.jsdelivr.net/npm/simple-icons@v10/icons/gitlab.svg',
+        'generic': 'https://cdn.jsdelivr.net/npm/simple-icons@v10/icons/git.svg',
+    } %}
+    {% set label_map = {
+        'github': 'GitHub',
+        'gitlab': 'GitLab',
+        'generic': 'Git'
+    } %}
+    {% set icon = icon_map.get(provider, icon_map['generic']) %}
+    {% set label = label_map.get(provider, provider.title()) %}
+    <span class="provider-label">
+        <img src="{{ icon }}" alt="{{ label }} logo">
+        {{ label }}
+    </span>
+{% endmacro %}

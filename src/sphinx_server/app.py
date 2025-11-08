@@ -1,0 +1,49 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+
+from .auto_builder import AutoBuildMonitor
+from .build_service import BuildQueue
+from .config import settings
+from .database import init_db
+from .web import admin, docs
+
+
+def create_app() -> FastAPI:
+    init_db()
+    app = FastAPI(title="Sphinx Server")
+
+    queue = BuildQueue()
+    monitor = AutoBuildMonitor(queue)
+    app.state.build_queue = queue
+    app.state.auto_monitor = monitor
+
+    @app.on_event("startup")
+    async def startup_event() -> None:
+        await queue.startup()
+        await monitor.startup()
+
+    @app.on_event("shutdown")
+    async def shutdown_event() -> None:
+        await queue.shutdown()
+        await monitor.shutdown()
+
+    app.include_router(admin.router)
+    app.include_router(docs.router)
+
+    static_dir = Path(__file__).resolve().parent / "web" / "static"
+    app.mount("/assets", StaticFiles(directory=str(static_dir)), name="assets")
+    app.mount(
+        "/artifacts",
+        StaticFiles(directory=str(settings.build_output_dir), html=True),
+        name="artifacts",
+    )
+
+    return app
+
+
+def get_app() -> FastAPI:
+    return create_app()
