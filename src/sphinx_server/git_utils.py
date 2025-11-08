@@ -1,3 +1,6 @@
+"""Utils to manage git actions"""
+
+
 from __future__ import annotations
 
 import os
@@ -157,6 +160,10 @@ def get_remote_sha(
 
 
 def _prepare_ssh_env(deploy_key: str | None, ssh_workdir: Path | None) -> tuple[dict[str, str] | None, Path | None]:
+    """Private function to prepare an ssh environment
+    :param deploy_key: key use for deployment
+    :param ssh_workdir: the path of ssh workdirectory used for connection to git server
+    :return: a tuple with environment for git command and the path to the ssh key"""
     if not deploy_key:
         return None, None
     key_dir = Path(ssh_workdir or (settings.data_dir / "ssh_keys"))
@@ -170,5 +177,7 @@ def _prepare_ssh_env(deploy_key: str | None, ssh_workdir: Path | None) -> tuple[
 
 
 def _cleanup_ssh_key(key_path: Path | None) -> None:
+    """Remove ssh key file
+    :param key_path: path from ssh key to delete"""
     if key_path and key_path.exists():
         key_path.unlink()

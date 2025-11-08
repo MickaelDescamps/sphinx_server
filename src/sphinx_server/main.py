@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import uvicorn
 
-from .app import get_app
 from .config import settings
 
-
 def main() -> None:
+    """Main function to run sphinx documentation hosting application"""
     uvicorn.run(
         "sphinx_server.app:get_app",
         host=settings.host,

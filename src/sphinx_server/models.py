@@ -1,3 +1,5 @@
+"""Application models"""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -9,17 +11,20 @@ from sqlmodel import Field, Relationship, SQLModel
 
 
 class ProviderType(str, Enum):
+    """Type of code repo provider"""
     github = "github"
     gitlab = "gitlab"
     generic = "generic"
 
 
 class RefType(str, Enum):
+    """Type of target followed to build documentation"""
     branch = "branch"
     tag = "tag"
 
 
 class BuildStatus(str, Enum):
+    """Build status possible for build work"""
     queued = "queued"
     running = "running"
     success = "success"
@@ -27,6 +32,7 @@ class BuildStatus(str, Enum):
 
 
 class Repository(SQLModel, table=True):
+    """Repository model"""
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
     provider: ProviderType = Field(default=ProviderType.github)
@@ -62,6 +68,7 @@ class Repository(SQLModel, table=True):
 
 
 class TrackedTarget(SQLModel, table=True):
+    """Target to track like an branch or a tags"""
     id: Optional[int] = Field(default=None, primary_key=True)
     repository_id: int = Field(foreign_key="repository.id")
     ref_type: RefType
@@ -91,6 +98,7 @@ class TrackedTarget(SQLModel, table=True):
 
 
 class Build(SQLModel, table=True):
+    """Build work model"""
     id: Optional[int] = Field(default=None, primary_key=True)
     repository_id: int = Field(foreign_key="repository.id")
     target_id: int = Field(foreign_key="trackedtarget.id")
