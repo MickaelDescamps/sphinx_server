@@ -1,3 +1,5 @@
+"""Command-line entrypoint for running the FastAPI application."""
+
 from __future__ import annotations
 
 import uvicorn
@@ -5,7 +7,7 @@ import uvicorn
 from .config import settings
 
 def main() -> None:
-    """Main function to run sphinx documentation hosting application"""
+    """Run uvicorn with the application factory configured."""
     uvicorn.run(
         "sphinx_server.app:get_app",
         host=settings.host,

@@ -1,3 +1,5 @@
+"""Administrative FastAPI routes for managing repositories and builds."""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -29,10 +31,12 @@ templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
 
 def get_queue(request: Request) -> BuildQueue:
+    """Extract the shared :class:`BuildQueue` from the FastAPI app state."""
     return request.app.state.build_queue
 
 
 def _safe_unlink(path: str | None) -> None:
+    """Delete a file while ignoring errors such as missing paths."""
     if not path:
         return
     try:
@@ -42,6 +46,7 @@ def _safe_unlink(path: str | None) -> None:
 
 
 def _safe_rmtree(path: str | Path | None) -> None:
+    """Remove a directory tree while swallowing exceptions."""
     if not path:
         return
     try:
@@ -51,11 +56,13 @@ def _safe_rmtree(path: str | Path | None) -> None:
 
 
 def _cleanup_build_artifacts(build: Build) -> None:
+    """Delete stored log and artifact files for a build."""
     _safe_unlink(build.log_path)
     _safe_rmtree(build.artifact_path)
 
 
 def _delete_build(session: Session, build: Build) -> None:
+    """Remove a build row and any associated artifacts from disk."""
     _cleanup_build_artifacts(build)
     session.delete(build)
 
@@ -65,6 +72,7 @@ def admin_index(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    """Render the admin dashboard listing repositories and recent builds."""
     repo_stmt = (
         select(Repository)
         .options(selectinload(Repository.tracked_targets))
@@ -86,6 +94,7 @@ def admin_index(
 
 @router.get("/repos/new")
 def new_repo(request: Request):
+    """Render a blank form for onboarding a repository."""
     return templates.TemplateResponse(
         "admin/repo_form.html",
         {
@@ -110,6 +119,7 @@ async def create_repo(
     deploy_key: Annotated[str | None, Form()] = None,
     session: Session = Depends(get_session),
 ):
+    """Persist a new repository based on submitted form data."""
     cleaned_key = deploy_key.strip() if deploy_key else None
     repo = Repository(
         name=name,
@@ -133,6 +143,7 @@ def edit_repo_form(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    """Render the edit form populated with an existing repository."""
     repo = session.get(Repository, repo_id)
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
@@ -160,6 +171,7 @@ async def update_repo(
     deploy_key: Annotated[str | None, Form()] = None,
     session: Session = Depends(get_session),
 ):
+    """Update repository metadata based on admin input."""
     repo = session.get(Repository, repo_id)
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
@@ -183,6 +195,7 @@ def repo_detail(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    """Show repository details, tracked targets, and build history."""
     repo_stmt = (
         select(Repository)
         .where(Repository.id == repo_id)
@@ -210,6 +223,7 @@ def repo_builds_json(
     token: str | None = None,
     session: Session = Depends(get_session),
 ):
+    """Return JSON-encoded build metadata for polling in the UI."""
     build_stmt = (
         select(Build)
         .where(Build.repository_id == repo_id)
@@ -254,6 +268,7 @@ async def delete_repo(
     repo_id: int,
     session: Session = Depends(get_session),
 ):
+    """Delete a repository along with its tracked targets and builds."""
     repo = session.get(Repository, repo_id)
     if repo:
         builds = session.exec(select(Build).where(Build.repository_id == repo_id)).all()
@@ -279,6 +294,7 @@ async def add_target(
     auto_build: Annotated[bool | None, Form()] = False,
     session: Session = Depends(get_session),
 ):
+    """Create a tracked branch or tag for the given repository."""
     repo = session.get(Repository, repo_id)
     if not repo:
         return RedirectResponse("/admin", status_code=302)
@@ -299,6 +315,7 @@ async def set_primary_target(
     target_id: Annotated[int, Form(...)],
     session: Session = Depends(get_session),
 ):
+    """Mark a tracked target as the repository's primary source of metadata."""
     repo = session.get(Repository, repo_id)
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
@@ -318,6 +335,7 @@ async def build_target(
     session: Session = Depends(get_session),
     queue: BuildQueue = Depends(get_queue),
 ):
+    """Enqueue a manual build for the specified target."""
     await enqueue_target_build(target_id, session, queue, triggered_by="manual")
     referer = request.headers.get("referer") or "/admin"
     return RedirectResponse(url=referer, status_code=303)
@@ -329,6 +347,7 @@ def available_refs(
     ref_type: RefType,
     session: Session = Depends(get_session),
 ):
+    """Fetch remote branches or tags to populate autocomplete UI."""
     repo = session.get(Repository, repo_id)
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
@@ -345,6 +364,7 @@ def view_build_log(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    """Render the stored build log inside the admin UI."""
     build_stmt = (
         select(Build)
         .where(Build.id == build_id)
@@ -364,6 +384,7 @@ def view_build_log(
 
 @router.get("/builds/{build_id}/log.txt")
 def view_build_log_raw(build_id: int, session: Session = Depends(get_session)):
+    """Return the plain-text build log for downloading or streaming."""
     build = session.get(Build, build_id)
     if not build:
         raise HTTPException(status_code=404, detail="Build not found")
@@ -378,6 +399,7 @@ async def delete_build(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    """Remove a single build record and associated artifacts."""
     build = session.get(Build, build_id)
     if build:
         repo_id = build.repository_id
@@ -394,6 +416,7 @@ async def clear_repo_builds(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    """Delete every build belonging to the provided repository."""
     builds = session.exec(select(Build).where(Build.repository_id == repo_id)).all()
     for build in builds:
         _delete_build(session, build)
@@ -408,6 +431,7 @@ def edit_target_form(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    """Display the edit form for a tracked target."""
     target = session.get(TrackedTarget, target_id)
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
@@ -430,6 +454,7 @@ async def update_target(
     auto_build: Annotated[bool | None, Form()] = False,
     session: Session = Depends(get_session),
 ):
+    """Persist changes to a tracked target."""
     target = session.get(TrackedTarget, target_id)
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
@@ -447,6 +472,7 @@ async def delete_target(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    """Remove a tracked target and delete its builds."""
     target = session.get(TrackedTarget, target_id)
     if target:
         builds = session.exec(select(Build).where(Build.target_id == target_id)).all()
@@ -471,6 +497,7 @@ async def bulk_target_action(
     session: Session = Depends(get_session),
     queue: BuildQueue = Depends(get_queue),
 ):
+    """Execute bulk build or delete actions on selected targets."""
     if action not in {"build", "delete"}:
         raise HTTPException(status_code=400, detail="Unsupported action")
     for target_id in target_ids:
@@ -495,6 +522,7 @@ async def bulk_target_action(
 def generate_ssh_key(
     algorithm: Annotated[str, Form()] = "ssh-ed25519",
 ):
+    """Generate an SSH deploy key pair using ``ssh-keygen``."""
     allowed = {"ssh-ed25519", "ssh-rsa", "ssh-mlkem768x25519-sha256"}
     if algorithm not in allowed:
         raise HTTPException(status_code=400, detail="Unsupported algorithm")

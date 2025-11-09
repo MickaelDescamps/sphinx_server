@@ -1,3 +1,5 @@
+"""Database engine creation and helper utilities."""
+
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -11,12 +13,14 @@ engine = create_engine(settings.db_url, connect_args={"check_same_thread": False
 
 
 def init_db() -> None:
+    """Create database tables and ensure SQLite-compatible schema evolution."""
     _ensure_sqlite_columns()
     SQLModel.metadata.create_all(engine)
 
 
 @contextmanager
 def session_scope():
+    """Context manager yielding a short-lived session."""
     session = Session(engine)
     try:
         yield session
@@ -25,11 +29,13 @@ def session_scope():
 
 
 def get_session():
+    """FastAPI dependency hook yielding a new session."""
     with Session(engine) as session:
         yield session
 
 
 def _ensure_sqlite_columns() -> None:
+    """Add missing optional columns when using SQLite."""
     if not settings.db_url.startswith("sqlite"):
         return
     repo_columns = {

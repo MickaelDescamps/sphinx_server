@@ -1,3 +1,5 @@
+"""Configuration and settings helpers for Sphinx Server."""
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -63,6 +65,7 @@ class Settings(BaseSettings):
         return self.data_dir / self.workspace_subdir
 
     def ensure_dirs(self) -> None:
+        """Create all filesystem directories required by the service."""
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.repo_cache_dir.mkdir(parents=True, exist_ok=True)
         self.build_output_dir.mkdir(parents=True, exist_ok=True)
@@ -73,6 +76,7 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """Load and cache the :class:`Settings` instance."""
     settings = Settings()
     settings.ensure_dirs()
     return settings

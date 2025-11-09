@@ -1,3 +1,5 @@
+"""ASGI application factory and FastAPI wiring for Sphinx Server."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,6 +15,10 @@ from .web import admin, docs
 
 
 def create_app() -> FastAPI:
+    """Create and configure the FastAPI application.
+
+    :returns: Fully configured FastAPI instance with routers/static mounts.
+    """
     init_db()
     app = FastAPI(title="Sphinx Server")
 
@@ -23,11 +29,13 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def startup_event() -> None:
+        """Start background services (build queue + auto-build monitor)."""
         await queue.startup()
         await monitor.startup()
 
     @app.on_event("shutdown")
     async def shutdown_event() -> None:
+        """Gracefully stop background services during shutdown."""
         await queue.shutdown()
         await monitor.shutdown()
 
@@ -46,4 +54,5 @@ def create_app() -> FastAPI:
 
 
 def get_app() -> FastAPI:
+    """FastAPI factory hook used by uvicorn's ``--factory`` option."""
     return create_app()

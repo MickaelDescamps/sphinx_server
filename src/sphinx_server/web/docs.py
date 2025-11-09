@@ -1,3 +1,5 @@
+"""Public-facing documentation explorer routes."""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -20,6 +22,7 @@ templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
 @router.get("/")
 def docs_index(request: Request, session: Session = Depends(get_session)):
+    """Render the documentation landing page with latest builds per target."""
     repo_stmt = select(Repository).options(selectinload(Repository.tracked_targets))
     repos = session.exec(repo_stmt).all()
     builds = session.exec(select(Build).order_by(Build.created_at.desc())).all()
@@ -41,6 +44,7 @@ def docs_index(request: Request, session: Session = Depends(get_session)):
 
 @router.get("/docs/{repo_id}/refs.json")
 def repo_refs(repo_id: int, session: Session = Depends(get_session)):
+    """Return JSON describing tracked refs and their latest artifacts."""
     repo = session.exec(
         select(Repository).where(Repository.id == repo_id).options(selectinload(Repository.tracked_targets))
     ).one_or_none()
@@ -70,6 +74,7 @@ def repo_refs(repo_id: int, session: Session = Depends(get_session)):
 
 @router.get("/docs/{repo_id}/{target_id}")
 def target_docs(repo_id: int, target_id: int, request: Request, session: Session = Depends(get_session)):
+    """Render a detail page showing all builds for a target."""
     repo = session.get(Repository, repo_id)
     target = session.get(TrackedTarget, target_id)
     if not repo or not target or target.repository_id != repo_id:
@@ -87,6 +92,7 @@ def target_docs(repo_id: int, target_id: int, request: Request, session: Session
 
 
 def _latest_artifacts(builds: list[Build]) -> dict[int, Build]:
+    """Map target ids to the most recent successful build containing artifacts."""
     latest: dict[int, Build] = {}
     for build in builds:
         if not build.target_id or build.target_id in latest:

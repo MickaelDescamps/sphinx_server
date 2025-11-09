@@ -93,6 +93,7 @@ class TrackedTarget(SQLModel, table=True):
     )
 
     def slug(self) -> str:
+        """Return a filesystem-friendly identifier for the target."""
         sanitized = self.ref_name.replace("/", "_").replace(" ", "-")
         return f"{self.ref_type}-{sanitized}"
 

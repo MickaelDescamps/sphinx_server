@@ -15,10 +15,16 @@ from .models import RefType
 
 
 class GitError(RuntimeError):
-    pass
+    """Error raised when an underlying git command fails."""
 
 
 def inject_token(url: str, token: str | None) -> str:
+    """Inject a personal access token into an HTTPS git URL.
+
+    :param url: Original repository URL.
+    :param token: Optional token to insert before the host name.
+    :returns: URL with credentials embedded when possible.
+    """
     if not token or not url.startswith("http"):
         return url
     parts = urlsplit(url)
@@ -37,6 +43,14 @@ def run_git(
     timeout: int | None = None,
     env: dict[str, str] | None = None,
 ) -> None:
+    """Run a git command and raise :class:`GitError` on failure.
+
+    :param args: Git arguments (without the ``git`` prefix).
+    :param cwd: Working directory where the command executes.
+    :param log_file: File for appending stdout/stderr.
+    :param timeout: Optional timeout passed to :func:`subprocess.run`.
+    :param env: Optional environment overrides, e.g., SSH command.
+    """
     cmd = ["git", *args]
     with log_file.open("a", encoding="utf-8") as log:
         log.write(f"\n$ {' '.join(cmd)}\n")
@@ -65,6 +79,17 @@ def clone_or_fetch(
     deploy_key: str | None = None,
     ssh_workdir: Path | None = None,
 ) -> None:
+    """Clone a repository (with retries) or fetch updates if it already exists.
+
+    :param repo_url: Remote repository URL.
+    :param token: HTTP token to inject for private clones.
+    :param checkout_dir: Destination directory for the git clone.
+    :param log_file: Log capturing command output.
+    :param timeout: Optional timeout for git commands.
+    :param retries: Number of clone retries before re-raising.
+    :param deploy_key: SSH private key contents for private repos.
+    :param ssh_workdir: Directory to write temporary SSH keys into.
+    """
     checkout_dir.parent.mkdir(parents=True, exist_ok=True)
     if checkout_dir.exists():
         run_git(["fetch", "--all", "--tags", "--prune"], cwd=checkout_dir, log_file=log_file)
@@ -100,6 +125,14 @@ def clone_or_fetch(
 
 
 def list_remote_refs(repo_url: str, token: str | None, ref_type: str) -> list[str]:
+    """List branches or tags from a remote repository.
+
+    :param repo_url: Repository URI.
+    :param token: Optional HTTP token to inject.
+    :param ref_type: ``\"branch\"`` or ``\"tag\"`` to filter refs.
+    :returns: Sorted unique list of ref names.
+    :raises GitError: On ``git ls-remote`` failure.
+    """
     flag = "--heads" if ref_type == "branch" else "--tags"
     temp_dir = settings.data_dir / "tmp"
     temp_dir.mkdir(parents=True, exist_ok=True)
@@ -131,6 +164,16 @@ def get_remote_sha(
     ref_name: str,
     deploy_key: str | None = None,
 ) -> str | None:
+    """Return the SHA of a remote ref without cloning an entire repository.
+
+    :param repo_url: Repository URL.
+    :param token: Optional HTTP token.
+    :param ref_type: :class:`RefType` enum or raw string.
+    :param ref_name: Branch or tag name.
+    :param deploy_key: Optional SSH deploy key contents.
+    :returns: SHA string or ``None`` if the ref does not exist.
+    :raises GitError: When ``git ls-remote`` exits with an error.
+    """
     ref_type_str = ref_type.value if hasattr(ref_type, "value") else ref_type
     if ref_type_str == "branch":
         refspec = f"refs/heads/{ref_name}"
@@ -160,10 +203,12 @@ def get_remote_sha(
 
 
 def _prepare_ssh_env(deploy_key: str | None, ssh_workdir: Path | None) -> tuple[dict[str, str] | None, Path | None]:
-    """Private function to prepare an ssh environment
-    :param deploy_key: key use for deployment
-    :param ssh_workdir: the path of ssh workdirectory used for connection to git server
-    :return: a tuple with environment for git command and the path to the ssh key"""
+    """Generate a temporary SSH key file and return env overrides.
+
+    :param deploy_key: Private key contents to persist temporarily.
+    :param ssh_workdir: Directory for storing the ephemeral key.
+    :returns: Tuple of ``(env, key_path)`` used by git commands.
+    """
     if not deploy_key:
         return None, None
     key_dir = Path(ssh_workdir or (settings.data_dir / "ssh_keys"))
@@ -177,7 +222,9 @@ def _prepare_ssh_env(deploy_key: str | None, ssh_workdir: Path | None) -> tuple[
 
 
 def _cleanup_ssh_key(key_path: Path | None) -> None:
-    """Remove ssh key file
-    :param key_path: path from ssh key to delete"""
+    """Remove an on-disk SSH key once it is no longer needed.
+
+    :param key_path: Path to delete.
+    """
     if key_path and key_path.exists():
         key_path.unlink()
