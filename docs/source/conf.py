@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime, timezone
 import os.path
 import shutil
 from pathlib import Path
@@ -69,7 +69,7 @@ for contributor in contributor_names:
         copyright_names.append(contributor)
 if not copyright_names:
     copyright_names.append("Unknown")
-copyright = f"{datetime.utcnow().year}, {', '.join(copyright_names)}"
+copyright = f"{datetime.now(timezone.utc).year}, {', '.join(copyright_names)}"
 
 
 extensions = [
