@@ -92,7 +92,13 @@ source_suffix = {
     '.md': 'markdown',
 }
 
-project_directory = src_path.walk()[1][0]  # Get the first folder in src
+# Get the project module name, the first folder in src
+if len(source_folders) > 0:
+    project_directory = source_folders[0].name
+else:
+    raise RuntimeError("No source folder found in 'src' directory.")
+
+
 package_toindex = str(src_path / project_directory) # Get the project src folder
 
 sai_autodoc_global_config = {
