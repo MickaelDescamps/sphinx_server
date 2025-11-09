@@ -14,8 +14,8 @@ engine = create_engine(settings.db_url, connect_args={"check_same_thread": False
 
 def init_db() -> None:
     """Create database tables and ensure SQLite-compatible schema evolution."""
-    _ensure_sqlite_columns()
     SQLModel.metadata.create_all(engine)
+    _ensure_sqlite_columns()
 
 
 @contextmanager

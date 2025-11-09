@@ -8,6 +8,7 @@
   const currentRef = window.__SPHINX_SERVER_REF_NAME || '';
   const currentType = (window.__SPHINX_SERVER_REF_TYPE || 'branch').toLowerCase();
   const currentVersion = window.__SPHINX_SERVER_VERSION || 'unknown';
+  const buildDate = window.__SPHINX_SERVER_BUILD_DATE || '';
 
   injectStyles();
   const headerContainer = injectHeaderMeta();
@@ -29,12 +30,20 @@
       .ref-label { display:inline-flex; align-items:center; justify-content:center; padding:0.35rem 0.75rem; border-radius:999px; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em; background:#dfe6e9; color:#2d3436; }
       .ref-label.branch { background:#c8e6c9; color:#1b5e20; }
       .ref-label.tag { background:#ffe0b2; color:#e65100; }
+      .sphinx-server-build-date { margin:1rem; padding-top:1rem; border-top:1px solid rgba(255,255,255,0.15); font-size:0.8rem; color:#fff; opacity:0.8; }
+      .sphinx-server-build-date strong { display:block; margin-bottom:0.15rem; font-size:0.82rem; }
+      .sphinx-server-build-date-main { margin:2rem 0 1rem 0; padding-top:1rem; border-top:1px solid rgba(0,0,0,0.08); font-size:0.85rem; color:#555; }
+      .sphinx-server-build-date-main strong { display:block; margin-bottom:0.2rem; font-weight:600; color:#111; }
+      .sphinx-server-build-date-inline { font-size:0.75rem; opacity:0.8; }
     `;
     document.head.appendChild(style);
   }
 
   function injectHeaderMeta() {
     const labelText = currentType === 'branch' ? 'Branch' : 'Tag';
+    const dateMarkup = buildDate
+      ? `<span class="sphinx-server-build-date-inline">${buildDate}</span>`
+      : '';
     const meta = document.createElement('div');
     meta.className = 'sphinx-server-meta';
     meta.innerHTML = `
@@ -108,9 +117,31 @@
       document.querySelector('nav');
     if (!nav) {
       document.body.appendChild(container);
-      return;
+      return document.body;
     }
     nav.appendChild(container);
+    return nav;
+  }
+
+  function injectBuildDate(targetNode) {
+    if (!buildDate || !targetNode) return;
+    const footer = document.createElement('div');
+    footer.className = 'sphinx-server-build-date';
+    footer.innerHTML = `<strong>Build date</strong><span>${buildDate}</span>`;
+    targetNode.appendChild(footer);
+  }
+
+  function injectMainContentDate() {
+    if (!buildDate) return;
+    const content = document.querySelector('.rst-content') ||
+      document.querySelector('.wy-nav-content') ||
+      document.querySelector('main') ||
+      document.body;
+    if (!content || content.querySelector('.sphinx-server-build-date-main')) return;
+    const block = document.createElement('div');
+    block.className = 'sphinx-server-build-date-main';
+    block.innerHTML = `<strong>Build date</strong><span>${buildDate}</span>`;
+    content.appendChild(block);
   }
 
   fetch(`/docs/${repoId}/refs.json`)
@@ -125,7 +156,8 @@
       }
       attachSelector(available);
       const container = createContainer(available);
-      attach(container);
+      const navTarget = attach(container);
+      injectBuildDate(navTarget);
     })
     .catch(() => {});
 })();

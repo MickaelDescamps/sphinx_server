@@ -9,7 +9,7 @@
 
 <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center;">
     <a class="button" href="/admin/repos/{{ repo.id }}/edit">Edit repository</a>
-    <form method="post" action="/admin/repos/{{ repo.id }}/delete" onsubmit="return confirm('Delete repository {{ repo.name }}?');">
+    <form method="post" action="/admin/repos/{{ repo.id }}/delete" style="margin-bottom: 0px;" onsubmit="return confirm('Delete repository {{ repo.name }}?');">
         <button type="submit" class="button button-outline">Delete repository</button>
     </form>
 </div>
@@ -31,19 +31,19 @@
                     {% if repo.primary_target_id == target.id %}
                         <span class="primary-chip">Primary</span>
                     {% else %}
-                        <form method="post" action="/admin/repos/{{ repo.id }}/primary" style="display:inline-block;">
+                        <form method="post" action="/admin/repos/{{ repo.id }}/primary" style="display:inline-block; margin-bottom: 0px;">
                             <input type="hidden" name="target_id" value="{{ target.id }}">
                             <button type="submit">Set primary</button>
                         </form>
                     {% endif %}
                 </td>
                     <td>
-                        <form method="post" action="/admin/targets/{{ target.id }}/build" style="display:inline-block;">
-                            <button type="submit">Build</button>
+                        <form method="post" action="/admin/targets/{{ target.id }}/build" style="display:inline-block; margin-bottom: 0px;">
+                            <button type="submit" style="margin-bottom: 0px;">Build</button>
                     </form>
-                    <a class="button button-outline" href="/admin/targets/{{ target.id }}/edit">Edit</a>
-                    <form method="post" action="/admin/targets/{{ target.id }}/delete" style="display:inline-block;" onsubmit="return confirm('Delete target {{ target.ref_name }}?');">
-                        <button type="submit">Delete</button>
+                    <a class="button button-outline" href="/admin/targets/{{ target.id }}/edit" style="margin-bottom: 0px;">Edit</a>
+                    <form method="post" action="/admin/targets/{{ target.id }}/delete" style="display:inline-block; margin-bottom: 0px;" onsubmit="return confirm('Delete target {{ target.ref_name }}?');">
+                        <button type="submit" style="margin-bottom: 0px;">Delete</button>
                     </form>
                 </td>
             </tr>
@@ -120,7 +120,7 @@
                     {% else %}-{% endif %}
                 </td>
                 <td>
-                    <form method="post" action="/admin/builds/{{ build.id }}/delete" onsubmit="return confirm('Delete build {{ build.id }} and remove artifacts?');">
+                    <form method="post" action="/admin/builds/{{ build.id }}/delete" style="margin-bottom: 0px;" onsubmit="return confirm('Delete build {{ build.id }} and remove artifacts?');">
                         <button type="submit">Delete</button>
                     </form>
                 </td>
@@ -158,7 +158,7 @@
             <td data-artifact-cell>${artifactCell}</td>
             <td data-log-cell>${logCell}</td>
             <td>
-                <form method="post" action="/admin/builds/${build.id}/delete" onsubmit="return confirm('Delete build ${build.id} and remove artifacts?');">
+                <form method="post" action="/admin/builds/${build.id}/delete" style="margin-bottom: 0px;" onsubmit="return confirm('Delete build ${build.id} and remove artifacts?');">
                     <button type="submit">Delete</button>
                 </form>
             </td>

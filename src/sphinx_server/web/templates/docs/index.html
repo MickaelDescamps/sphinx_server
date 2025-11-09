@@ -5,12 +5,12 @@
     <section class="repo-card">
         <h3>
             {{ repo.project_name or repo.name }}
-            {% if repo.project_version %}<span class="repo-version">v{{ repo.project_version }}</span>{% endif %}
+            {% if repo.project_version %}<span class="repo-version" style="font-size: 1.5rem;">v{{ repo.project_version }}</span>{% endif %}
         </h3>
         {% if repo.project_summary %}
-            <p class="muted">{{ repo.project_summary }}</p>
+            <p class="muted" style="font-size: 1.5rem;">{{ repo.project_summary }}</p>
         {% elif repo.description %}
-            <p class="muted">{{ repo.description }}</p>
+            <p class="muted" style="font-size: 1.5rem;">{{ repo.description }}</p>
         {% endif %}
         {% if repo.project_homepage %}
             <p><a href="{{ repo.project_homepage }}" target="_blank">Homepage</a></p>

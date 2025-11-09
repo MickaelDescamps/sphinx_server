@@ -10,7 +10,7 @@
     <tbody>
     {% for repo in repos %}
         <tr>
-            <td><a href="/admin/repos/{{ repo.id }}">{{ repo.name }}</a><br><span class="muted">{{ repo.url }}</span></td>
+            <td><a href="/admin/repos/{{ repo.id }}">{{ repo.name }}</a><br><span class="muted" style="font-size: 1.2rem;">{{ repo.url }}</span></td>
             <td>{{ provider_badge(repo.provider) }}</td>
             <td>{{ repo.docs_path }}</td>
             <td>{{ repo.tracked_targets|length }}</td>

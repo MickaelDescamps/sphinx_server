@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 {% set ref_label = 'Branch' if target.ref_type == 'branch' else 'Tag' %}
-<h2>{{ repo.name }} / <span class="ref-label {{ target.ref_type }}">{{ ref_label }}</span>{{ target.ref_name }}</h2>
+<h2>{{ repo.name }} / <span class="ref-label {{ target.ref_type }}" style="font-size:2.5rem;">{{ ref_label }}</span>{{ target.ref_name }}</h2>
 <p><a href="/">Back to explorer</a></p>
 <table>
     <thead><tr><th>SHA</th><th>Status</th><th>Duration</th><th>Finished</th></tr></thead>

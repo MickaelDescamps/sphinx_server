@@ -4,6 +4,13 @@ All notable changes to `sphinx-server` are documented here.
 
 The project adheres to [Semantic Versioning](https://semver.org/) and to [keep a changelog project](https://keepachangelog.com/en/1.1.0/)
 
+## [0.1.1] - 2025-11-09
+
+### Changed
+- Include build date in documentation
+- Fix user panel css bug
+
+
 ## [0.1.0] - 2025-11-09
 
 

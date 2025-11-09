@@ -143,10 +143,17 @@ def _process_build(build_id: int) -> None:
                 or repo.project_version
                 or "unknown"
             )
-            _inject_navigation_links(artifact_dir, repo.id, target, version_hint)
+            completion_time = datetime.utcnow()
+            _inject_navigation_links(
+                artifact_dir,
+                repo.id,
+                target,
+                version_hint,
+                completion_time,
+            )
 
             build.status = BuildStatus.success
-            build.finished_at = datetime.utcnow()
+            build.finished_at = completion_time
             if build.started_at and build.finished_at:
                 build.duration_seconds = (build.finished_at - build.started_at).total_seconds()
             build.artifact_path = str(artifact_dir)
@@ -327,6 +334,7 @@ def _inject_navigation_links(
     repo_id: int,
     target: TrackedTarget,
     repo_version: str,
+    built_at: datetime,
 ) -> None:
     """Append navigation metadata/script tags to generated HTML pages.
 
@@ -334,13 +342,16 @@ def _inject_navigation_links(
     :param repo_id: Repository identifier used to build per-target URLs.
     :param target: Target metadata describing the ref being built.
     :param repo_version: Fallback version string to surface in the UI.
+    :param built_at: Completion timestamp for the rendered artifact.
     """
+    build_date = built_at.strftime("%Y-%m-%d %H:%M:%S UTC")
     script_payload = {
         "REPO": repo_id,
         "TARGET": target.slug(),
         "REF_NAME": target.ref_name,
         "REF_TYPE": getattr(target.ref_type, "value", target.ref_type),
         "VERSION": repo_version,
+        "BUILD_DATE": build_date,
     }
     js_assignments = ";".join(
         [f"window.__SPHINX_SERVER_{key}={json.dumps(value)}" for key, value in script_payload.items()]
