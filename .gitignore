@@ -35,6 +35,10 @@ htmlcov/
 .mypy_cache/
 
 
+# Ignore UV files
+uv.lock
+
+
 # Ignore specific project folders
 .sphinx_server/
 
