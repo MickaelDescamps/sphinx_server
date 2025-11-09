@@ -94,7 +94,7 @@
         <button type="submit" class="button button-outline">Clear build history</button>
     </form>
     <table>
-        <thead><tr><th>Target</th><th>Status</th><th>Trigger</th><th>Duration</th><th>Artifact</th><th>Log</th><th></th></tr></thead>
+        <thead><tr><th>Target</th><th>Status</th><th>Trigger</th><th>Started</th><th>Duration</th><th>Artifact</th><th>Log</th><th></th></tr></thead>
         <tbody id="build-table-body">
         {% for build in builds %}
             {% set status_value = build.status.replace('BuildStatus.', '').lower() %}
@@ -108,6 +108,8 @@
                 {% set status_label = build.status.replace('BuildStatus.', '').replace('_', ' ') %}
                 <td><span class="status-label status-{{ status_value }}" data-build-status>{{ status_label }}</span></td>
                 <td data-trigger-cell>{{ build.triggered_by or 'manual' }}</td>
+                {% set started = build.started_at or build.created_at %}
+                <td data-start-cell>{{ format_local_datetime(started) }}</td>
                 <td data-duration-cell>{{ '%.1fs' % build.duration_seconds if build.duration_seconds else '-' }}</td>
                 <td data-artifact-cell>
                     {% if build.artifact_path %}
@@ -149,11 +151,13 @@
         const logCell = build.log_url
             ? `<a href="${build.log_url}">View log</a>`
             : '-';
+        const startedLabel = build.started_label || '-';
         return `
         <tr data-build-id="${build.id}">
             <td>${refBadge} ${build.ref_name || ''}</td>
             <td><span class="status-label status-${build.status_label.toLowerCase()}">${build.status_label}</span></td>
             <td>${build.triggered_by || 'manual'}</td>
+            <td>${startedLabel}</td>
             <td>${build.duration_label || '-'}</td>
             <td data-artifact-cell>${artifactCell}</td>
             <td data-log-cell>${logCell}</td>

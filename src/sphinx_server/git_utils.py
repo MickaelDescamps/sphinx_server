@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import uuid
@@ -12,6 +13,8 @@ from urllib.parse import urlsplit, urlunsplit
 
 from .config import settings
 from .models import RefType
+
+logger = logging.getLogger(__name__)
 
 
 class GitError(RuntimeError):
@@ -53,6 +56,7 @@ def run_git(
     """
     cmd = ["git", *args]
     with log_file.open("a", encoding="utf-8") as log:
+        logger.debug("Executing git %s (cwd=%s)", " ".join(args), cwd or os.getcwd())
         log.write(f"\n$ {' '.join(cmd)}\n")
         log.flush()
         proc = subprocess.run(
@@ -66,6 +70,7 @@ def run_git(
             env=env,
         )
         if proc.returncode != 0:
+            logger.error("git %s failed with %s", " ".join(args), proc.returncode)
             raise GitError(f"git {' '.join(args)} failed with code {proc.returncode}")
 
 
@@ -92,6 +97,7 @@ def clone_or_fetch(
     """
     checkout_dir.parent.mkdir(parents=True, exist_ok=True)
     if checkout_dir.exists():
+        logger.debug("Fetching updates for repo at %s", checkout_dir)
         run_git(["fetch", "--all", "--tags", "--prune"], cwd=checkout_dir, log_file=log_file)
         return
 
@@ -110,6 +116,7 @@ def clone_or_fetch(
                 timeout=timeout,
                 env=env,
             )
+            logger.info("Cloned repository %s into %s", repo_url, checkout_dir)
             break
         except GitError as exc:
             attempt += 1
@@ -119,8 +126,10 @@ def clone_or_fetch(
                 raise
             with log_file.open("a", encoding="utf-8") as log:
                 log.write(f"Retrying clone ({attempt}/{retries}) after error: {exc}\n")
+            logger.warning("Retrying clone of %s (%s/%s)", repo_url, attempt, retries)
     _cleanup_ssh_key(key_path)
     if token:
+        logger.debug("Resetting remote URL to %s", repo_url)
         run_git(["remote", "set-url", "origin", repo_url], cwd=checkout_dir, log_file=log_file)
 
 
@@ -142,6 +151,7 @@ def list_remote_refs(repo_url: str, token: str | None, ref_type: str) -> list[st
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=False)
         if proc.returncode != 0:
             log.write(proc.stdout)
+            logger.error("git ls-remote failed for %s", repo_url)
             raise GitError(f"git ls-remote failed: {proc.stdout.strip()}")
     refs = []
     for line in proc.stdout.splitlines():
@@ -192,6 +202,7 @@ def get_remote_sha(
             timeout=settings.git_default_timeout,
         )
         if proc.returncode != 0:
+            logger.error("git ls-remote failed for %s %s", repo_url, refspec)
             raise GitError(proc.stderr.strip() or "git ls-remote failed")
         for line in proc.stdout.splitlines():
             parts = line.strip().split()
@@ -216,6 +227,7 @@ def _prepare_ssh_env(deploy_key: str | None, ssh_workdir: Path | None) -> tuple[
     key_path = key_dir / f"deploy_{uuid.uuid4().hex}"
     key_path.write_text(deploy_key.strip() + ("\n" if not deploy_key.endswith("\n") else ""))
     os.chmod(key_path, 0o600)
+    logger.debug("Created temporary deploy key at %s", key_path)
     env = os.environ.copy()
     env["GIT_SSH_COMMAND"] = f"ssh -i {key_path} -o StrictHostKeyChecking=no"
     return env, key_path
@@ -227,4 +239,5 @@ def _cleanup_ssh_key(key_path: Path | None) -> None:
     :param key_path: Path to delete.
     """
     if key_path and key_path.exists():
+        logger.debug("Deleting temporary deploy key %s", key_path)
         key_path.unlink()

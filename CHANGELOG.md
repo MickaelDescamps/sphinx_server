@@ -4,6 +4,24 @@ All notable changes to `sphinx-server` are documented here.
 
 The project adheres to [Semantic Versioning](https://semver.org/) and to [keep a changelog project](https://keepachangelog.com/en/1.1.0/)
 
+## [Unreleased]
+
+### Added
+- build start time in admin list of build
+- lot of logs
+
+### Changed
+- display time in local time
+
+### Removed
+
+### Deprecated
+
+### Fixed
+
+### Security
+
+
 ## [0.1.1] - 2025-11-09
 
 ### Changed

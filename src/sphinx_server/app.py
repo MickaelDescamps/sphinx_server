@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -13,12 +14,15 @@ from .config import settings
 from .database import init_db
 from .web import admin, docs
 
+logger = logging.getLogger(__name__)
+
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application.
 
     :returns: Fully configured FastAPI instance with routers/static mounts.
     """
+    logger.debug("Initializing database")
     init_db()
     app = FastAPI(title="Sphinx Server")
 
@@ -30,12 +34,14 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def startup_event() -> None:
         """Start background services (build queue + auto-build monitor)."""
+        logger.info("Starting background services")
         await queue.startup()
         await monitor.startup()
 
     @app.on_event("shutdown")
     async def shutdown_event() -> None:
         """Gracefully stop background services during shutdown."""
+        logger.info("Shutting down background services")
         await queue.shutdown()
         await monitor.shutdown()
 

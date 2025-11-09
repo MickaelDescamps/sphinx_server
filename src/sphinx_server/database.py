@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
 
 from sqlalchemy import text
@@ -9,11 +10,14 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from .config import settings
 
+logger = logging.getLogger(__name__)
+
 engine = create_engine(settings.db_url, connect_args={"check_same_thread": False})
 
 
 def init_db() -> None:
     """Create database tables and ensure SQLite-compatible schema evolution."""
+    logger.debug("Creating database schema")
     SQLModel.metadata.create_all(engine)
     _ensure_sqlite_columns()
 
@@ -57,6 +61,7 @@ def _ensure_sqlite_columns() -> None:
         }
         for col, ddl in repo_columns.items():
             if col not in repo_existing:
+                logger.debug("Adding repo column %s", col)
                 conn.exec_driver_sql(f"ALTER TABLE repository ADD COLUMN {col} {ddl}")
 
         build_existing = {
@@ -65,4 +70,5 @@ def _ensure_sqlite_columns() -> None:
         }
         for col, ddl in build_columns.items():
             if col not in build_existing:
+                logger.debug("Adding build column %s", col)
                 conn.exec_driver_sql(f"ALTER TABLE build ADD COLUMN {col} {ddl}")

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -66,12 +69,16 @@ class Settings(BaseSettings):
 
     def ensure_dirs(self) -> None:
         """Create all filesystem directories required by the service."""
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.repo_cache_dir.mkdir(parents=True, exist_ok=True)
-        self.build_output_dir.mkdir(parents=True, exist_ok=True)
-        self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.env_root_dir.mkdir(parents=True, exist_ok=True)
-        self.workspace_root.mkdir(parents=True, exist_ok=True)
+        for label, path in {
+            "data": self.data_dir,
+            "repo_cache": self.repo_cache_dir,
+            "builds": self.build_output_dir,
+            "logs": self.log_dir,
+            "envs": self.env_root_dir,
+            "workspaces": self.workspace_root,
+        }.items():
+            path.mkdir(parents=True, exist_ok=True)
+            logger.debug("Ensured %s directory exists at %s", label, path)
 
 
 @lru_cache
@@ -79,6 +86,7 @@ def get_settings() -> Settings:
     """Load and cache the :class:`Settings` instance."""
     settings = Settings()
     settings.ensure_dirs()
+    logger.debug("Settings loaded (environment=%s)", settings.environment)
     return settings
 
 
