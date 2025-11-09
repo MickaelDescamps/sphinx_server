@@ -8,3 +8,33 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Sphinx build files
+docs/_build/
+htmlcov/
+.coverage
+.tox/
+.nox/
+.pytest_cache/
+.cache/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+*.log
+*.pot
+*.mo
+*.sqlite3
+*.db
+*.sqlite
+*.env
+.env.*
+.mypy_cache/
+
+
+# Ignore specific project folders
+.sphinx_server/
+
