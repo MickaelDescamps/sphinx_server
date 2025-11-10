@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>System settings</h2>
+<p class="muted">Updates are written to <code>{{ env_file_path }}</code> so they persist across restarts.</p>
+{% if saved %}
+<div style="padding:0.75rem 1rem; background:#e8f5e9; border:1px solid #c8e6c9; border-radius:6px; margin-bottom:1rem;">
+    Settings saved successfully.
+</div>
+{% endif %}
+<form method="post" action="/admin/settings">
+    <fieldset>
+        <legend>Server</legend>
+        <label>Host
+            <input type="text" name="host" value="{{ settings_obj.host }}" required>
+        </label>
+        <label>Port
+            <input type="number" name="port" value="{{ settings_obj.port }}" min="1" required>
+        </label>
+        <label><input type="checkbox" name="reload" {% if settings_obj.reload %}checked{% endif %}> Enable auto-reload (dev only)</label>
+        <label>Data directory
+            <input type="text" name="data_dir" value="{{ settings_obj.data_dir }}" required>
+        </label>
+    </fieldset>
+    <fieldset>
+        <legend>Build behavior</legend>
+        <label>Default environment manager
+            <select name="environment_manager" required>
+                {% for option in environment_choices %}
+                    <option value="{{ option }}" {% if settings_obj.environment_manager == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Pyenv default Python version
+            <input type="text" name="pyenv_default_python_version" value="{{ settings_obj.pyenv_default_python_version }}" required>
+        </label>
+        <label>Build processes
+            <input type="number" name="build_processes" value="{{ settings_obj.build_processes }}" min="1" required>
+        </label>
+        <label>Git timeout (seconds)
+            <input type="number" name="git_default_timeout" value="{{ settings_obj.git_default_timeout }}" min="10" required>
+        </label>
+        <label>Sphinx timeout (seconds)
+            <input type="number" name="sphinx_timeout" value="{{ settings_obj.sphinx_timeout }}" min="60" required>
+        </label>
+        <label>Auto-build interval (seconds)
+            <input type="number" name="auto_build_interval_seconds" value="{{ settings_obj.auto_build_interval_seconds }}" min="10" required>
+        </label>
+    </fieldset>
+    <button type="submit">Save settings</button>
+</form>
+{% endblock %}
