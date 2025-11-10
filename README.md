@@ -10,12 +10,15 @@ Sphinx Server is a lightweight control plane that keeps track of documentation r
 - Register multiple repositories with provider metadata, docs directories, and (optional) access tokens for private clones.
 - Provide per-repository SSH deploy keys when HTTPS tokens aren’t available; keys stay scoped to each repo and are used only for its builds. During installs we also apply the repo’s optional `dev`/`docs` extras so build tooling/plugins are available just like in CI.
 - Track any number of branches or tags per repository.
+- Role-based authentication with viewer / contributor / administrator permissions, including per-user password management, enforced first-login password changes, and an admin user directory.
 - Edit or delete repositories later and manage tracked branches/tags directly from the administrator UI.
 - Kick off builds manually from the administrator UI; the worker logs git + Sphinx output per build and exposes the logs in the browser.
 - Clean stale build artifacts/log files from the UI to keep storage tidy.
 - Each tracked branch/tag always exposes its latest successful build at a stable URL, while the Sphinx UI gets an embedded selector (like Read the Docs) to hop between other tracked refs without reloading the admin site.
 - Designate a "main" tracked target per repository, surface its pyproject metadata (name/version/summary) in the docs explorer, and update the metadata automatically whenever that target is rebuilt.
 - Builds run in parallel inside isolated workspaces (fresh git clone + dedicated virtualenv per build), so multiple refs of the same repo can render simultaneously without interfering with each other.
+- Pick the Python environment manager (uv or pyenv+pip) per tracked target so docs can build under the toolchain each branch/tag expects.
+- Tweak core server settings (host, data directory, timeouts, default env manager, etc.) from the admin **Settings** page; edits persist to the `.env` file.
 - Build logs stream live in the admin UI, and each build records its duration so you can see how long docs took to compile.
 - An auto-build monitor periodically checks refs marked with "Auto build" and automatically enqueues builds when remote commits advance.
 - Build history indicates whether each run was triggered manually or automatically, so you can distinguish user-initiated rebuilds from watcher activity.
@@ -24,7 +27,7 @@ Sphinx Server is a lightweight control plane that keeps track of documentation r
 ## Requirements
 - Python 3.10+
 - Git CLI
-- [uv](https://github.com/astral-sh/uv) CLI (used to create repo-specific virtual environments during builds)
+- [uv](https://github.com/astral-sh/uv) CLI (used to create repo-specific virtual environments during builds) **or** [pyenv](https://github.com/pyenv/pyenv) when `SPHINX_SERVER_ENV_MANAGER=pyenv`
 
 ## Usage
 ```bash
@@ -35,7 +38,7 @@ pip install -e .
 sphinx-server  # or python -m sphinx_server.main
 ```
 
-Browse to `http://localhost:8000/admin` to add repositories. After configuring at least one branch/tag target, click **Build now**; the worker clones the repo, provisions a dedicated uv-managed virtual environment for that repo (installing dependencies from its `pyproject.toml` or requirements files), and runs `sphinx-build`. Once the build completes successfully the documentation becomes available under `/docs/...` and `/artifacts/...`.
+Browse to `http://localhost:8000/login`, sign in with the bootstrap administrator credentials (`admin` / `password`), and follow the forced password-change prompt on the **My account** page. Contributors can access `/admin` while administrators also see `/admin/settings` and `/admin/users`. After configuring at least one branch/tag target, click **Build now**; the worker clones the repo, provisions a dedicated virtual environment for that repo (uv by default or pyenv+pip when configured, with per-target overrides available in the admin UI), installs dependencies from its `pyproject.toml` or requirements files, and runs `sphinx-build`. Once the build completes successfully the documentation becomes available under `/docs/...` and `/artifacts/...`.
 
 ## Configuration
 The service is configured through environment variables (prefix `SPHINX_SERVER_`). Useful settings:
@@ -47,22 +50,29 @@ The service is configured through environment variables (prefix `SPHINX_SERVER_`
 | `SPHINX_SERVER_RELOAD` | Enable uvicorn reload (dev) | `false` |
 | `SPHINX_SERVER_DATA_DIR` | Root directory for DB, repos, builds, logs | `<project>/.sphinx_server` |
 | `SPHINX_SERVER_DATABASE_URL` | Custom SQL database URL | `sqlite:///<data_dir>/sphinx_server.db` |
+| `SPHINX_SERVER_ENV_MANAGER` | Default environment backend (`uv` or `pyenv`) when targets don’t override | `uv` |
+| `SPHINX_SERVER_PYENV_DEFAULT_PYTHON_VERSION` | Python version passed to pyenv when repos lack `.python-version` | `3.11.8` |
+| `SPHINX_SERVER_SECRET_KEY` | Secret key for session cookies | `change-me` |
+
+All of these values can be edited manually or via **Admin → Settings**, which writes the updated values back to the `.env` file so they persist across restarts.
+
+A default `admin` user (password: `password`) is provisioned automatically the first time the database is created. The account cannot access other pages until the password is updated.
 
 Repository-specific secrets (e.g., GitHub PATs) can be stored per repo when you create it; tokens are injected into clone URLs and removed immediately after the initial clone.
 
 ## Folder layout
 ```
 src/sphinx_server/
-├── app.py            # FastAPI factory & router wiring
+├── app.py            # FastAPI factory, middleware & router wiring
+├── auth.py           # Password hashing, role guards, default-user seeding
 ├── build_service.py  # Git clone/fetch + Sphinx build executor and queue
 ├── config.py         # Pydantic settings + paths
 ├── database.py       # SQLModel engine/session helpers
 ├── git_utils.py      # Git command helpers (token-aware)
-├── models.py         # SQLModel tables for repositories, targets, builds
-└── web/              # Routers + Jinja templates for admin/docs UIs
+├── models.py         # SQLModel tables (repos, targets, builds, users)
+└── web/              # Routers (docs, admin, auth/account) + templates
 ```
 
 ## Next steps
 - Wire provider-specific webhooks (GitHub/GitLab) to automatically enqueue builds when tracked refs change.
-- Add authentication/authorization around the admin surface.
 - Support per-repo build command overrides (poetry, tox, etc.) and matrix builds per ref.

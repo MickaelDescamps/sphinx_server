@@ -31,6 +31,30 @@ class BuildStatus(str, Enum):
     failed = "failed"
 
 
+class UserRole(str, Enum):
+    """Role assigned to authenticated users."""
+
+    viewer = "viewer"
+    contributor = "contributor"
+    administrator = "administrator"
+
+
+class User(SQLModel, table=True):
+    """User account allowed to access the application."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    username: str = Field(index=True, sa_column_kwargs={"unique": True})
+    full_name: Optional[str] = None
+    email: Optional[str] = Field(default=None, sa_column_kwargs={"unique": False})
+    role: UserRole = Field(default=UserRole.viewer)
+    password_hash: str
+    is_active: bool = Field(default=True)
+    must_change_password: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    last_login_at: Optional[datetime] = None
+
+
 class Repository(SQLModel, table=True):
     """Repository model"""
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -76,6 +100,10 @@ class TrackedTarget(SQLModel, table=True):
     auto_build: bool = True
     last_sha: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    environment_manager: str | None = Field(
+        default=None,
+        description="Optional override for environment provisioning backend",
+    )
 
     repository: Repository | None = Relationship(
         sa_relationship=sa_relationship(

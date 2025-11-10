@@ -10,6 +10,14 @@
     </label>
     <label>Reference name<input type="text" name="ref_name" value="{{ target.ref_name }}" required></label>
     <label><input type="checkbox" name="auto_build" {% if target.auto_build %}checked{% endif %}> Auto build on webhook</label>
+    <label>Environment manager
+        <select name="environment_manager">
+            <option value="" {% if not target.environment_manager %}selected{% endif %}>System default ({{ default_env_manager }})</option>
+            {% for option in environment_choices %}
+                <option value="{{ option }}" {% if target.environment_manager == option %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+        </select>
+    </label>
     <button type="submit">Save</button>
     <a class="button button-outline" href="/admin/repos/{{ repo.id }}">Cancel</a>
 </form>

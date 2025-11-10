@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from pathlib import Path
 
@@ -11,18 +12,23 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 
+from sphinx_server.model_converter import convert_build_to_ui_model
+
+from ..auth import require_user
 from ..database import get_session
 from ..models import Build, Repository, TrackedTarget
 
-router = APIRouter(tags=["docs"])
+router = APIRouter(tags=["docs"], dependencies=[Depends(require_user)])
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+logger = logging.getLogger(__name__)
 
 
 @router.get("/")
 def docs_index(request: Request, session: Session = Depends(get_session)):
     """Render the documentation landing page with latest builds per target."""
+    logger.debug("Rendering docs index")
     repo_stmt = select(Repository).options(selectinload(Repository.tracked_targets))
     repos = session.exec(repo_stmt).all()
     builds = session.exec(select(Build).order_by(Build.created_at.desc())).all()
@@ -49,6 +55,7 @@ def repo_refs(repo_id: int, session: Session = Depends(get_session)):
         select(Repository).where(Repository.id == repo_id).options(selectinload(Repository.tracked_targets))
     ).one_or_none()
     if not repo:
+        logger.error("Repo %s not found when requesting refs", repo_id)
         raise HTTPException(status_code=404)
     builds = session.exec(
         select(Build)
@@ -78,6 +85,7 @@ def target_docs(repo_id: int, target_id: int, request: Request, session: Session
     repo = session.get(Repository, repo_id)
     target = session.get(TrackedTarget, target_id)
     if not repo or not target or target.repository_id != repo_id:
+        logger.error("Repo %s or target %s missing for docs view", repo_id, target_id)
         raise HTTPException(status_code=404)
     build_stmt = (
         select(Build)
@@ -85,9 +93,14 @@ def target_docs(repo_id: int, target_id: int, request: Request, session: Session
         .order_by(Build.created_at.desc())
     )
     builds = session.exec(build_stmt).all()
+
+    out_builds = []
+    for build in builds:
+        out_builds.append(convert_build_to_ui_model(build))
+
     return templates.TemplateResponse(
         "docs/target.html",
-        {"request": request, "repo": repo, "target": target, "builds": builds},
+        {"request": request, "repo": repo, "target": target, "builds": out_builds},
     )
 
 

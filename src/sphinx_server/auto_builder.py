@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from sqlmodel import Session, select
 
@@ -11,6 +12,8 @@ from .database import engine
 from .git_utils import GitError, get_remote_sha
 from .models import Build, BuildStatus, RefType, Repository, TrackedTarget
 from .build_service import BuildQueue, enqueue_target_build
+
+logger = logging.getLogger(__name__)
 
 
 class AutoBuildMonitor:
@@ -25,11 +28,13 @@ class AutoBuildMonitor:
         """Launch the monitoring loop if it is not already running."""
         if self.task:
             return
+        logger.info("Starting auto-build monitor loop")
         self.task = asyncio.create_task(self._loop())
 
     async def shutdown(self) -> None:
         """Stop the monitoring loop gracefully."""
         if self.task:
+            logger.info("Stopping auto-build monitor loop")
             self.task.cancel()
             try:
                 await self.task
@@ -73,7 +78,9 @@ class AutoBuildMonitor:
                         repo.deploy_key,
                     )
                 except GitError:
+                    logger.warning("Failed to fetch remote SHA for repo %s target %s", repo.id, target.id)
                     continue
                 if not remote_sha or remote_sha == target.last_sha:
                     continue
+                logger.info("Detected new commit for repo %s target %s", repo.id, target.id)
                 await enqueue_target_build(target.id, session, self.queue, triggered_by="auto")

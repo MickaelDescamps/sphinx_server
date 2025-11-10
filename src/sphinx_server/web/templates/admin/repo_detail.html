@@ -18,7 +18,7 @@
     <h3>Tracked targets</h3>
     {% if repo.tracked_targets %}
     <table class="target-table">
-        <thead><tr><th><input type="checkbox" id="select-all"></th><th>Reference</th><th>Auto build?</th><th>Last SHA</th><th>Primary</th><th>Actions</th></tr></thead>
+        <thead><tr><th><input type="checkbox" id="select-all"></th><th>Reference</th><th>Auto build?</th><th>Env manager</th><th>Last SHA</th><th>Primary</th><th>Actions</th></tr></thead>
         <tbody>
         {% for target in repo.tracked_targets %}
             <tr>
@@ -26,6 +26,8 @@
                     {% set ref_label = 'Branch' if target.ref_type == 'branch' else 'Tag' %}
                     <td><span class="ref-label {{ target.ref_type }}">{{ ref_label }}</span>{{ target.ref_name }}</td>
                     <td>{{ 'Yes' if target.auto_build else 'No' }}</td>
+                    {% set env_mgr = target.environment_manager or default_env_manager %}
+                    <td>{{ env_mgr }}{% if not target.environment_manager %} (default){% endif %}</td>
                     <td>{{ target.last_sha or '-' }}</td>
                     <td>
                     {% if repo.primary_target_id == target.id %}
@@ -83,6 +85,14 @@
         </div>
         <button type="button" id="load-refs">Load available references</button>
         <label><input type="checkbox" name="auto_build" checked> Auto build on webhook</label>
+        <label>Environment manager
+            <select name="environment_manager">
+                <option value="" selected>System default ({{ default_env_manager }})</option>
+                {% for option in environment_choices %}
+                    <option value="{{ option }}">{{ option }}</option>
+                {% endfor %}
+            </select>
+        </label>
         <button type="submit">Add</button>
     </form>
 </section>
@@ -94,7 +104,7 @@
         <button type="submit" class="button button-outline">Clear build history</button>
     </form>
     <table>
-        <thead><tr><th>Target</th><th>Status</th><th>Trigger</th><th>Duration</th><th>Artifact</th><th>Log</th><th></th></tr></thead>
+        <thead><tr><th>Target</th><th>Status</th><th>Trigger</th><th>Started</th><th>Duration</th><th>Artifact</th><th>Log</th><th></th></tr></thead>
         <tbody id="build-table-body">
         {% for build in builds %}
             {% set status_value = build.status.replace('BuildStatus.', '').lower() %}
@@ -108,6 +118,8 @@
                 {% set status_label = build.status.replace('BuildStatus.', '').replace('_', ' ') %}
                 <td><span class="status-label status-{{ status_value }}" data-build-status>{{ status_label }}</span></td>
                 <td data-trigger-cell>{{ build.triggered_by or 'manual' }}</td>
+                {% set started = build.started_at or build.created_at %}
+                <td data-start-cell>{{ format_local_datetime(started) }}</td>
                 <td data-duration-cell>{{ '%.1fs' % build.duration_seconds if build.duration_seconds else '-' }}</td>
                 <td data-artifact-cell>
                     {% if build.artifact_path %}
@@ -149,11 +161,13 @@
         const logCell = build.log_url
             ? `<a href="${build.log_url}">View log</a>`
             : '-';
+        const startedLabel = build.started_label || '-';
         return `
         <tr data-build-id="${build.id}">
             <td>${refBadge} ${build.ref_name || ''}</td>
             <td><span class="status-label status-${build.status_label.toLowerCase()}">${build.status_label}</span></td>
             <td>${build.triggered_by || 'manual'}</td>
+            <td>${startedLabel}</td>
             <td>${build.duration_label || '-'}</td>
             <td data-artifact-cell>${artifactCell}</td>
             <td data-log-cell>${logCell}</td>

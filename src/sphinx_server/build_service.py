@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -12,6 +13,7 @@ from concurrent.futures import ProcessPoolExecutor
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 try:
     import tomllib
@@ -24,6 +26,9 @@ from .config import get_settings, settings
 from .database import engine
 from .git_utils import clone_or_fetch, run_git
 from .models import Build, BuildStatus, RefType, Repository, TrackedTarget
+from .time_utils import format_local_datetime
+
+logger = logging.getLogger(__name__)
 
 
 class BuildExecutor:
@@ -31,6 +36,7 @@ class BuildExecutor:
 
     def __init__(self) -> None:
         """Instantiate the underlying :class:`~concurrent.futures.ProcessPoolExecutor`."""
+        logger.debug("Initializing BuildExecutor with %s workers", settings.build_processes)
         self.pool = ProcessPoolExecutor(max_workers=settings.build_processes)
 
     async def run_build(self, build_id: int) -> None:
@@ -39,10 +45,12 @@ class BuildExecutor:
         :param build_id: Primary key of the :class:`sphinx_server.models.Build`.
         """
         loop = asyncio.get_running_loop()
+        logger.info("Dispatching build %s to executor", build_id)
         await loop.run_in_executor(self.pool, _process_build, build_id)
 
     async def shutdown(self) -> None:
         """Tear down the executor without waiting for running jobs."""
+        logger.debug("Shutting down BuildExecutor")
         self.pool.shutdown(wait=False)
 
 
@@ -59,6 +67,7 @@ class BuildQueue:
         """Spin up the background worker task once."""
         if self.worker_task:
             return
+        logger.debug("Starting build queue worker")
         self.worker_task = asyncio.create_task(self._worker())
 
     async def shutdown(self) -> None:
@@ -72,6 +81,7 @@ class BuildQueue:
 
     async def enqueue(self, build_id: int) -> None:
         """Queue a build identifier for background processing."""
+        logger.debug("Enqueuing build %s", build_id)
         await self.queue.put(build_id)
 
     async def _worker(self) -> None:
@@ -97,10 +107,12 @@ def _process_build(build_id: int) -> None:
     with Session(engine) as session:
         build = session.get(Build, build_id)
         if not build:
+            logger.error("Build %s no longer exists", build_id)
             return
         repo = session.get(Repository, build.repository_id)
         target = session.get(TrackedTarget, build.target_id)
         if not repo or not target:
+            logger.error("Missing repo/target for build %s", build_id)
             return
 
         log_path = local_settings.log_dir / f"build_{build.id}.log"
@@ -111,6 +123,7 @@ def _process_build(build_id: int) -> None:
         session.commit()
 
         try:
+            logger.info("Starting build %s for repo %s target %s", build.id, repo.id, target.id)
             _prepare_workspace(workspace)
             time.sleep(5)
             clone_or_fetch(
@@ -132,7 +145,8 @@ def _process_build(build_id: int) -> None:
             build.sha = _current_sha(workspace_repo, log_path)
 
             artifact_dir = local_settings.build_output_dir / str(repo.id) / target.slug()
-            env_bin = _prepare_repo_environment(env_dir, workspace_repo, log_path)
+            env_manager = target.environment_manager or settings.environment_manager
+            env_bin = _prepare_repo_environment(env_dir, workspace_repo, log_path, env_manager)
             _build_sphinx(workspace_repo / repo.docs_path, artifact_dir, log_path, env_bin)
 
             metadata = _extract_project_metadata(workspace_repo)
@@ -160,6 +174,7 @@ def _process_build(build_id: int) -> None:
             target.last_sha = build.sha
             session.add(target)
         except Exception as exc:  # pragma: no cover - best effort logging
+            logger.exception("Build %s failed: %s", build_id, exc)
             with log_path.open("a", encoding="utf-8") as log:
                 log.write(f"\nBuild failed: {exc}\n")
             build.status = BuildStatus.failed
@@ -167,6 +182,7 @@ def _process_build(build_id: int) -> None:
             if build.started_at and build.finished_at:
                 build.duration_seconds = (build.finished_at - build.started_at).total_seconds()
         finally:
+            logger.info("Completed build %s (status=%s)", build_id, build.status)
             session.add(build)
             session.commit()
             shutil.rmtree(workspace, ignore_errors=True)
@@ -178,8 +194,10 @@ def _prepare_workspace(workspace: Path) -> None:
     :param workspace: Directory that will hold repo checkout and venv.
     """
     if workspace.exists():
+        logger.debug("Cleaning existing workspace %s", workspace)
         shutil.rmtree(workspace)
     workspace.mkdir(parents=True, exist_ok=True)
+    logger.debug("Created workspace %s", workspace)
 
 
 def _current_sha(repo_path: Path, log_path: Path) -> str:
@@ -198,28 +216,71 @@ def _current_sha(repo_path: Path, log_path: Path) -> str:
         return proc.stdout.strip()
 
 
-def _prepare_repo_environment(env_dir: Path, repo_path: Path, log_path: Path) -> Path:
-    """Provision a uv-managed virtual environment with project dependencies.
+def _prepare_repo_environment(
+    env_dir: Path,
+    repo_path: Path,
+    log_path: Path,
+    manager: Literal["uv", "pyenv"],
+) -> Path:
+    """Provision a virtual environment with project dependencies.
 
     :param env_dir: Directory where the venv will live.
     :param repo_path: Local repository clone used to read dependency files.
     :param log_path: Log file to append command output.
+    :param manager: Environment backend to use for provisioning.
     :returns: Path to the environment ``bin`` directory.
     """
     if env_dir.exists():
         shutil.rmtree(env_dir)
     env_dir.parent.mkdir(parents=True, exist_ok=True)
 
+    if manager == "uv":
+        return _prepare_uv_environment(env_dir, repo_path, log_path)
+    if manager == "pyenv":
+        return _prepare_pyenv_environment(env_dir, repo_path, log_path)
+    raise RuntimeError(f"Unsupported environment manager: {manager}")
+
+
+def _prepare_uv_environment(env_dir: Path, repo_path: Path, log_path: Path) -> Path:
+    """Create and populate an environment using uv for venv + installers."""
+
+    logger.debug("Creating uv virtualenv at %s", env_dir)
     _run_command(["uv", "venv", str(env_dir)], log_path)
     bin_dir = env_dir / ("Scripts" if os.name == "nt" else "bin")
     python_bin = bin_dir / ("python.exe" if os.name == "nt" else "python")
 
-    _run_command(["uv", "pip", "install", "--python", str(python_bin), "sphinx"], log_path)
-    _install_repo_dependencies(repo_path, python_bin, log_path)
+    _pip_install(log_path, python_bin, ["sphinx"], installer="uv")
+    _install_repo_dependencies(repo_path, python_bin, log_path, installer="uv")
     return bin_dir
 
 
-def _install_repo_dependencies(repo_path: Path, python_bin: Path, log_path: Path) -> None:
+def _prepare_pyenv_environment(env_dir: Path, repo_path: Path, log_path: Path) -> Path:
+    """Create an environment using pyenv for Python selection and pip installs."""
+
+    python_version = _resolve_pyenv_python_version(repo_path)
+    logger.debug("Ensuring pyenv Python %s is available", python_version)
+    _run_command(["pyenv", "install", "-s", python_version], log_path)
+
+    env = os.environ.copy()
+    env["PYENV_VERSION"] = python_version
+    logger.debug("Creating pyenv virtualenv at %s", env_dir)
+    _run_command(["pyenv", "exec", "python", "-m", "venv", str(env_dir)], log_path, env=env)
+
+    bin_dir = env_dir / ("Scripts" if os.name == "nt" else "bin")
+    python_bin = bin_dir / ("python.exe" if os.name == "nt" else "python")
+
+    _pip_install(log_path, python_bin, ["sphinx"], installer="pip")
+    _install_repo_dependencies(repo_path, python_bin, log_path, installer="pip")
+    return bin_dir
+
+
+def _install_repo_dependencies(
+    repo_path: Path,
+    python_bin: Path,
+    log_path: Path,
+    *,
+    installer: Literal["uv", "pip"],
+) -> None:
     """Install optional extras plus common requirements files for the repo.
 
     :param repo_path: Repository checkout location.
@@ -232,11 +293,8 @@ def _install_repo_dependencies(repo_path: Path, python_bin: Path, log_path: Path
         spec = "."
         if extras:
             spec = f".[{','.join(extras)}]"
-        _run_command(
-            ["uv", "pip", "install", "--python", str(python_bin), spec],
-            log_path,
-            cwd=repo_path,
-        )
+        logger.debug("Installing repo dependencies %s with extras %s", repo_path, extras)
+        _pip_install(log_path, python_bin, [spec], installer=installer, cwd=repo_path)
 
     req_candidates = [
         repo_path / "requirements.txt",
@@ -245,10 +303,8 @@ def _install_repo_dependencies(repo_path: Path, python_bin: Path, log_path: Path
     ]
     for req in req_candidates:
         if req.exists():
-            _run_command(
-                ["uv", "pip", "install", "--python", str(python_bin), "-r", str(req)],
-                log_path,
-            )
+            logger.debug("Installing requirements from %s", req)
+            _pip_install(log_path, python_bin, ["-r", str(req)], installer=installer)
 
 
 def _build_sphinx(docs_path: Path, output_dir: Path, log_path: Path, env_bin: Path) -> None:
@@ -268,6 +324,7 @@ def _build_sphinx(docs_path: Path, output_dir: Path, log_path: Path, env_bin: Pa
     output_dir.mkdir(parents=True, exist_ok=True)
 
     sphinx_exe = env_bin / ("sphinx-build.exe" if os.name == "nt" else "sphinx-build")
+    logger.info("Running sphinx build for %s -> %s", docs_path, output_dir)
     cmd = [
         str(sphinx_exe),
         "-b",
@@ -278,11 +335,29 @@ def _build_sphinx(docs_path: Path, output_dir: Path, log_path: Path, env_bin: Pa
     _run_command(cmd, log_path, timeout=settings.sphinx_timeout)
 
 
+def _pip_install(
+    log_path: Path,
+    python_bin: Path,
+    args: list[str],
+    *,
+    installer: Literal["uv", "pip"],
+    cwd: Path | None = None,
+) -> None:
+    """Run either uv or pip installs using the requested interpreter."""
+
+    if installer == "uv":
+        base_cmd = ["uv", "pip", "install", "--python", str(python_bin)]
+    else:
+        base_cmd = [str(python_bin), "-m", "pip", "install"]
+    _run_command(base_cmd + args, log_path, cwd=cwd)
+
+
 def _run_command(
     cmd: list[str],
     log_path: Path,
     cwd: Path | None = None,
     timeout: int | None = None,
+    env: dict[str, str] | None = None,
 ) -> None:
     """Execute a subprocess and tee stdout/stderr to the build log.
 
@@ -293,6 +368,7 @@ def _run_command(
     :raises RuntimeError: If the command exits with a non-zero status.
     """
     with log_path.open("a", encoding="utf-8") as log:
+        logger.debug("Running command: %s", " ".join(cmd))
         log.write(f"\n$ {' '.join(cmd)} (cwd={cwd or os.getcwd()})\n")
         log.flush()
         proc = subprocess.run(
@@ -303,9 +379,29 @@ def _run_command(
             text=True,
             check=False,
             timeout=timeout,
+            env=env,
         )
         if proc.returncode != 0:
+            logger.error("Command failed: %s (code %s)", " ".join(cmd), proc.returncode)
             raise RuntimeError(f"Command {' '.join(cmd)} failed with exit code {proc.returncode}")
+
+
+def _resolve_pyenv_python_version(repo_path: Path) -> str:
+    """Return the Python version to request from pyenv for this repo."""
+
+    version_file = repo_path / ".python-version"
+    if version_file.exists():
+        version = version_file.read_text(encoding="utf-8").strip()
+        if version:
+            return version.splitlines()[0].strip()
+
+    default = settings.pyenv_default_python_version
+    if default:
+        return default
+    raise RuntimeError(
+        "pyenv environment manager selected but no .python-version or "
+        "SPHINX_SERVER_PYENV_DEFAULT_PYTHON_VERSION provided",
+    )
 
 
 def _detect_optional_extras(pyproject: Path) -> list[str]:
@@ -344,7 +440,7 @@ def _inject_navigation_links(
     :param repo_version: Fallback version string to surface in the UI.
     :param built_at: Completion timestamp for the rendered artifact.
     """
-    build_date = built_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+    build_date = format_local_datetime(built_at)
     script_payload = {
         "REPO": repo_id,
         "TARGET": target.slug(),
@@ -450,6 +546,7 @@ async def enqueue_target_build(
     session.add(build)
     session.commit()
     session.refresh(build)
+    logger.info("Queued build %s for target %s (triggered_by=%s)", build.id, target_id, triggered_by)
     await queue.enqueue(build.id)
     return build
 
