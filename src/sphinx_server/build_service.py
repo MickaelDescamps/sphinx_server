@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -30,6 +31,7 @@ from .time_utils import format_local_datetime
 
 logger = logging.getLogger(__name__)
 DOC_DEPENDENCY_KEYS = {"docs", "doc", "documentation", "dev"}
+PY_VERSION_PATTERN = re.compile(r"(\d+(?:\.\d+){0,2})")
 
 
 class BuildExecutor:
@@ -395,6 +397,10 @@ def _run_command(
 def _resolve_pyenv_python_version(repo_path: Path) -> str:
     """Return the Python version to request from pyenv for this repo."""
 
+    pyproject_version = _python_version_from_pyproject(repo_path)
+    if pyproject_version:
+        return pyproject_version
+
     version_file = repo_path / ".python-version"
     if version_file.exists():
         version = version_file.read_text(encoding="utf-8").strip()
@@ -416,6 +422,45 @@ def _load_pyproject(pyproject: Path) -> dict[str, Any]:
         return tomllib.loads(pyproject.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError):
         return {}
+
+
+def _python_version_from_pyproject(repo_path: Path) -> str | None:
+    """Extract the desired Python version from pyproject metadata if available."""
+    pyproject = repo_path / "pyproject.toml"
+    if not pyproject.exists():
+        return None
+    data = _load_pyproject(pyproject)
+    project = data.get("project", {})
+    requires_python = project.get("requires-python")
+    version = _first_version_token(requires_python) if isinstance(requires_python, str) else None
+    if version:
+        return version
+
+    poetry = data.get("tool", {}).get("poetry", {})
+    deps = poetry.get("dependencies")
+    if isinstance(deps, dict):
+        py_dep = deps.get("python")
+        if isinstance(py_dep, str):
+            version = _first_version_token(py_dep)
+        elif isinstance(py_dep, dict):
+            version_str = py_dep.get("version")
+            if isinstance(version_str, str):
+                version = _first_version_token(version_str)
+            else:
+                version = None
+        if version:
+            return version
+    return None
+
+
+def _first_version_token(spec: str | None) -> str | None:
+    """Return the first numeric version token found in the provided spec string."""
+    if not spec:
+        return None
+    match = PY_VERSION_PATTERN.search(spec)
+    if match:
+        return match.group(1)
+    return None
 
 
 def _detect_optional_extras(pyproject_data: dict[str, Any]) -> list[str]:
