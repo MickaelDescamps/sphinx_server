@@ -14,6 +14,7 @@ The project adheres to [Semantic Versioning](https://semver.org/) and to [keep a
 - Admin settings page that edits core config values and persists them to `.env`
 - Role-based authentication with login/logout, session cookies, viewer/contributor/administrator permissions, a self-service account page, and an admin-only user management screen (session protection remains configurable through `.env`).
 - Forced password changes on first login (bootstrap `admin` / `password` account and admin-issued resets now require updating credentials before accessing other pages).
+- Support detecting docs/dev extras declared via Poetry v1 (`[tool.poetry.extras]`) and Poetry dependency groups (`[tool.poetry.group.<name>.dependencies]`) so those optional dependencies are installed automatically during builds.
 
 ### Changed
 - display time in local time
