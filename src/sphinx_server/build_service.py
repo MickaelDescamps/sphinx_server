@@ -13,6 +13,7 @@ from concurrent.futures import ProcessPoolExecutor
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 try:
     import tomllib
@@ -144,7 +145,8 @@ def _process_build(build_id: int) -> None:
             build.sha = _current_sha(workspace_repo, log_path)
 
             artifact_dir = local_settings.build_output_dir / str(repo.id) / target.slug()
-            env_bin = _prepare_repo_environment(env_dir, workspace_repo, log_path)
+            env_manager = target.environment_manager or settings.environment_manager
+            env_bin = _prepare_repo_environment(env_dir, workspace_repo, log_path, env_manager)
             _build_sphinx(workspace_repo / repo.docs_path, artifact_dir, log_path, env_bin)
 
             metadata = _extract_project_metadata(workspace_repo)
@@ -214,29 +216,71 @@ def _current_sha(repo_path: Path, log_path: Path) -> str:
         return proc.stdout.strip()
 
 
-def _prepare_repo_environment(env_dir: Path, repo_path: Path, log_path: Path) -> Path:
-    """Provision a uv-managed virtual environment with project dependencies.
+def _prepare_repo_environment(
+    env_dir: Path,
+    repo_path: Path,
+    log_path: Path,
+    manager: Literal["uv", "pyenv"],
+) -> Path:
+    """Provision a virtual environment with project dependencies.
 
     :param env_dir: Directory where the venv will live.
     :param repo_path: Local repository clone used to read dependency files.
     :param log_path: Log file to append command output.
+    :param manager: Environment backend to use for provisioning.
     :returns: Path to the environment ``bin`` directory.
     """
     if env_dir.exists():
         shutil.rmtree(env_dir)
     env_dir.parent.mkdir(parents=True, exist_ok=True)
 
-    logger.debug("Creating virtualenv at %s", env_dir)
+    if manager == "uv":
+        return _prepare_uv_environment(env_dir, repo_path, log_path)
+    if manager == "pyenv":
+        return _prepare_pyenv_environment(env_dir, repo_path, log_path)
+    raise RuntimeError(f"Unsupported environment manager: {manager}")
+
+
+def _prepare_uv_environment(env_dir: Path, repo_path: Path, log_path: Path) -> Path:
+    """Create and populate an environment using uv for venv + installers."""
+
+    logger.debug("Creating uv virtualenv at %s", env_dir)
     _run_command(["uv", "venv", str(env_dir)], log_path)
     bin_dir = env_dir / ("Scripts" if os.name == "nt" else "bin")
     python_bin = bin_dir / ("python.exe" if os.name == "nt" else "python")
 
-    _run_command(["uv", "pip", "install", "--python", str(python_bin), "sphinx"], log_path)
-    _install_repo_dependencies(repo_path, python_bin, log_path)
+    _pip_install(log_path, python_bin, ["sphinx"], installer="uv")
+    _install_repo_dependencies(repo_path, python_bin, log_path, installer="uv")
     return bin_dir
 
 
-def _install_repo_dependencies(repo_path: Path, python_bin: Path, log_path: Path) -> None:
+def _prepare_pyenv_environment(env_dir: Path, repo_path: Path, log_path: Path) -> Path:
+    """Create an environment using pyenv for Python selection and pip installs."""
+
+    python_version = _resolve_pyenv_python_version(repo_path)
+    logger.debug("Ensuring pyenv Python %s is available", python_version)
+    _run_command(["pyenv", "install", "-s", python_version], log_path)
+
+    env = os.environ.copy()
+    env["PYENV_VERSION"] = python_version
+    logger.debug("Creating pyenv virtualenv at %s", env_dir)
+    _run_command(["pyenv", "exec", "python", "-m", "venv", str(env_dir)], log_path, env=env)
+
+    bin_dir = env_dir / ("Scripts" if os.name == "nt" else "bin")
+    python_bin = bin_dir / ("python.exe" if os.name == "nt" else "python")
+
+    _pip_install(log_path, python_bin, ["sphinx"], installer="pip")
+    _install_repo_dependencies(repo_path, python_bin, log_path, installer="pip")
+    return bin_dir
+
+
+def _install_repo_dependencies(
+    repo_path: Path,
+    python_bin: Path,
+    log_path: Path,
+    *,
+    installer: Literal["uv", "pip"],
+) -> None:
     """Install optional extras plus common requirements files for the repo.
 
     :param repo_path: Repository checkout location.
@@ -250,11 +294,7 @@ def _install_repo_dependencies(repo_path: Path, python_bin: Path, log_path: Path
         if extras:
             spec = f".[{','.join(extras)}]"
         logger.debug("Installing repo dependencies %s with extras %s", repo_path, extras)
-        _run_command(
-            ["uv", "pip", "install", "--python", str(python_bin), spec],
-            log_path,
-            cwd=repo_path,
-        )
+        _pip_install(log_path, python_bin, [spec], installer=installer, cwd=repo_path)
 
     req_candidates = [
         repo_path / "requirements.txt",
@@ -264,10 +304,7 @@ def _install_repo_dependencies(repo_path: Path, python_bin: Path, log_path: Path
     for req in req_candidates:
         if req.exists():
             logger.debug("Installing requirements from %s", req)
-            _run_command(
-                ["uv", "pip", "install", "--python", str(python_bin), "-r", str(req)],
-                log_path,
-            )
+            _pip_install(log_path, python_bin, ["-r", str(req)], installer=installer)
 
 
 def _build_sphinx(docs_path: Path, output_dir: Path, log_path: Path, env_bin: Path) -> None:
@@ -298,11 +335,29 @@ def _build_sphinx(docs_path: Path, output_dir: Path, log_path: Path, env_bin: Pa
     _run_command(cmd, log_path, timeout=settings.sphinx_timeout)
 
 
+def _pip_install(
+    log_path: Path,
+    python_bin: Path,
+    args: list[str],
+    *,
+    installer: Literal["uv", "pip"],
+    cwd: Path | None = None,
+) -> None:
+    """Run either uv or pip installs using the requested interpreter."""
+
+    if installer == "uv":
+        base_cmd = ["uv", "pip", "install", "--python", str(python_bin)]
+    else:
+        base_cmd = [str(python_bin), "-m", "pip", "install"]
+    _run_command(base_cmd + args, log_path, cwd=cwd)
+
+
 def _run_command(
     cmd: list[str],
     log_path: Path,
     cwd: Path | None = None,
     timeout: int | None = None,
+    env: dict[str, str] | None = None,
 ) -> None:
     """Execute a subprocess and tee stdout/stderr to the build log.
 
@@ -324,10 +379,29 @@ def _run_command(
             text=True,
             check=False,
             timeout=timeout,
+            env=env,
         )
         if proc.returncode != 0:
             logger.error("Command failed: %s (code %s)", " ".join(cmd), proc.returncode)
             raise RuntimeError(f"Command {' '.join(cmd)} failed with exit code {proc.returncode}")
+
+
+def _resolve_pyenv_python_version(repo_path: Path) -> str:
+    """Return the Python version to request from pyenv for this repo."""
+
+    version_file = repo_path / ".python-version"
+    if version_file.exists():
+        version = version_file.read_text(encoding="utf-8").strip()
+        if version:
+            return version.splitlines()[0].strip()
+
+    default = settings.pyenv_default_python_version
+    if default:
+        return default
+    raise RuntimeError(
+        "pyenv environment manager selected but no .python-version or "
+        "SPHINX_SERVER_PYENV_DEFAULT_PYTHON_VERSION provided",
+    )
 
 
 def _detect_optional_extras(pyproject: Path) -> list[str]:

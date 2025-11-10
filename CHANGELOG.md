@@ -9,15 +9,22 @@ The project adheres to [Semantic Versioning](https://semver.org/) and to [keep a
 ### Added
 - build start time in admin list of build
 - lot of logs
+- optional pyenv-based build environments via `SPHINX_SERVER_ENV_MANAGER`
+- per-target selection of uv or pyenv for each tracked target
+- Admin settings page that edits core config values and persists them to `.env`
+- Role-based authentication with login/logout, session cookies, viewer/contributor/administrator permissions, a self-service account page, and an admin-only user management screen (session protection remains configurable through `.env`).
+- Forced password changes on first login (bootstrap `admin` / `password` account and admin-issued resets now require updating credentials before accessing other pages).
 
 ### Changed
 - display time in local time
 
 ### Removed
 
+- `SPHINX_SERVER_DEFAULT_ADMIN_USERNAME` / `SPHINX_SERVER_DEFAULT_ADMIN_PASSWORD` environment variables (the bootstrap admin is always `admin` / `password` and is flagged for a mandatory password change).
 ### Deprecated
 
 ### Fixed
+- Missing `itsdangerous` dependency required by the new session middleware.
 
 ### Security
 

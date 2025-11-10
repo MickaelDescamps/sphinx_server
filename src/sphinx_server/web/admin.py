@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated
+from typing import Annotated, Literal
 
 import shutil
 import subprocess
@@ -19,19 +19,38 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 
+from sphinx_server.auth import require_admin, require_contributor
 from sphinx_server.build_service import BuildQueue, enqueue_target_build
-from sphinx_server.config import settings
+from sphinx_server.config import (
+    settings,
+    apply_settings_overrides,
+    get_env_file_path,
+    persist_env_settings,
+)
 from sphinx_server.database import get_session
 from sphinx_server.git_utils import GitError, list_remote_refs
 from sphinx_server.model_converter import convert_build_to_ui_model
 from sphinx_server.models import Build, ProviderType, RefType, Repository, TrackedTarget
 from sphinx_server.time_utils import format_local_datetime
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_contributor)])
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 logger = logging.getLogger(__name__)
+ENVIRONMENT_CHOICES: tuple[str, ...] = ("uv", "pyenv")
+SETTINGS_ENV_MAP = {
+    "host": "SPHINX_SERVER_HOST",
+    "port": "SPHINX_SERVER_PORT",
+    "reload": "SPHINX_SERVER_RELOAD",
+    "data_dir": "SPHINX_SERVER_DATA_DIR",
+    "environment_manager": "SPHINX_SERVER_ENVIRONMENT_MANAGER",
+    "pyenv_default_python_version": "SPHINX_SERVER_PYENV_DEFAULT_PYTHON_VERSION",
+    "git_default_timeout": "SPHINX_SERVER_GIT_DEFAULT_TIMEOUT",
+    "sphinx_timeout": "SPHINX_SERVER_SPHINX_TIMEOUT",
+    "build_processes": "SPHINX_SERVER_BUILD_PROCESSES",
+    "auto_build_interval_seconds": "SPHINX_SERVER_AUTO_BUILD_INTERVAL_SECONDS",
+}
 
 
 def get_queue(request: Request) -> BuildQueue:
@@ -72,6 +91,16 @@ def _delete_build(session: Session, build: Build) -> None:
     session.delete(build)
 
 
+def _resolve_environment_manager(choice: str | None) -> Literal["uv", "pyenv"] | None:
+    """Validate the requested environment manager or allow defaults."""
+
+    if not choice:
+        return None
+    if choice not in ENVIRONMENT_CHOICES:
+        raise HTTPException(status_code=400, detail="Unsupported environment manager")
+    return choice  # type: ignore[return-value]
+
+
 @router.get("/")
 def admin_index(
     request: Request,
@@ -102,6 +131,76 @@ def admin_index(
         "admin/index.html",
         {"request": request, "repos": repos, "builds": out_builds},
     )
+
+
+@router.get("/settings")
+def view_settings(
+    request: Request,
+    saved: bool = False,
+    _: None = Depends(require_admin),
+):
+    """Display the system-wide settings editor."""
+    return templates.TemplateResponse(
+        "admin/settings.html",
+        {
+            "request": request,
+            "settings_obj": settings,
+            "environment_choices": ENVIRONMENT_CHOICES,
+            "env_file_path": get_env_file_path(),
+            "saved": saved,
+        },
+    )
+
+
+@router.post("/settings")
+async def update_settings(
+    host: Annotated[str, Form(...)],
+    port: Annotated[int, Form(...)],
+    data_dir: Annotated[str, Form(...)],
+    environment_manager: Annotated[str, Form(...)],
+    pyenv_default_python_version: Annotated[str, Form(...)],
+    git_default_timeout: Annotated[int, Form(...)],
+    sphinx_timeout: Annotated[int, Form(...)],
+    build_processes: Annotated[int, Form(...)],
+    auto_build_interval_seconds: Annotated[int, Form(...)],
+    reload_flag: Annotated[str | None, Form()] = None,
+    _: None = Depends(require_admin),
+):
+    """Persist the submitted settings to the .env file and runtime."""
+    env_manager = _resolve_environment_manager(environment_manager) or settings.environment_manager
+    reload_enabled = bool(reload_flag)
+    data_dir_path = Path(data_dir).expanduser()
+
+    runtime_updates = {
+        "host": host.strip(),
+        "port": int(port),
+        "reload": reload_enabled,
+        "data_dir": data_dir_path,
+        "environment_manager": env_manager,
+        "pyenv_default_python_version": pyenv_default_python_version.strip(),
+        "git_default_timeout": int(git_default_timeout),
+        "sphinx_timeout": int(sphinx_timeout),
+        "build_processes": int(build_processes),
+        "auto_build_interval_seconds": int(auto_build_interval_seconds),
+    }
+
+    env_updates = {
+        SETTINGS_ENV_MAP["host"]: runtime_updates["host"],
+        SETTINGS_ENV_MAP["port"]: str(runtime_updates["port"]),
+        SETTINGS_ENV_MAP["reload"]: "true" if reload_enabled else "false",
+        SETTINGS_ENV_MAP["data_dir"]: str(data_dir_path),
+        SETTINGS_ENV_MAP["environment_manager"]: env_manager,
+        SETTINGS_ENV_MAP["pyenv_default_python_version"]: runtime_updates["pyenv_default_python_version"],
+        SETTINGS_ENV_MAP["git_default_timeout"]: str(runtime_updates["git_default_timeout"]),
+        SETTINGS_ENV_MAP["sphinx_timeout"]: str(runtime_updates["sphinx_timeout"]),
+        SETTINGS_ENV_MAP["build_processes"]: str(runtime_updates["build_processes"]),
+        SETTINGS_ENV_MAP["auto_build_interval_seconds"]: str(runtime_updates["auto_build_interval_seconds"]),
+    }
+
+    persist_env_settings(env_updates)
+    apply_settings_overrides(runtime_updates)
+    logger.info("Updated system settings via admin UI")
+    return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
 
 
 @router.get("/repos/new")
@@ -233,6 +332,8 @@ def repo_detail(
             "repo": repo,
             "builds": builds,
             "format_local_datetime": format_local_datetime,
+            "environment_choices": ENVIRONMENT_CHOICES,
+            "default_env_manager": settings.environment_manager,
         },
     )
 
@@ -316,6 +417,7 @@ async def add_target(
     ref_type: Annotated[RefType, Form(...)],
     ref_name: Annotated[str, Form(...)],
     auto_build: Annotated[bool | None, Form()] = False,
+    environment_manager: Annotated[str | None, Form()] = None,
     session: Session = Depends(get_session),
 ):
     """Create a tracked branch or tag for the given repository."""
@@ -329,6 +431,7 @@ async def add_target(
         ref_type=ref_type,
         ref_name=ref_name.strip(),
         auto_build=bool(auto_build),
+        environment_manager=_resolve_environment_manager(environment_manager),
     )
     session.add(target)
     session.commit()
@@ -476,6 +579,8 @@ def edit_target_form(
             "request": request,
             "target": target,
             "repo": repo,
+            "environment_choices": ENVIRONMENT_CHOICES,
+            "default_env_manager": settings.environment_manager,
         },
     )
 
@@ -486,6 +591,7 @@ async def update_target(
     ref_type: Annotated[RefType, Form(...)],
     ref_name: Annotated[str, Form(...)],
     auto_build: Annotated[bool | None, Form()] = False,
+    environment_manager: Annotated[str | None, Form()] = None,
     session: Session = Depends(get_session),
 ):
     """Persist changes to a tracked target."""
@@ -495,6 +601,7 @@ async def update_target(
     target.ref_type = ref_type
     target.ref_name = ref_name.strip()
     target.auto_build = bool(auto_build)
+    target.environment_manager = _resolve_environment_manager(environment_manager)
     session.add(target)
     session.commit()
     logger.info("Updated target %s for repo %s", target_id, target.repository_id)

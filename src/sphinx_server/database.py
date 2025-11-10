@@ -54,6 +54,12 @@ def _ensure_sqlite_columns() -> None:
         "duration_seconds": "REAL",
         "triggered_by": "TEXT DEFAULT 'manual'",
     }
+    tracked_target_columns = {
+        "environment_manager": "TEXT",
+    }
+    user_columns = {
+        "must_change_password": "BOOLEAN DEFAULT 0",
+    }
     with engine.connect() as conn:
         repo_existing = {
             row[1]
@@ -72,3 +78,21 @@ def _ensure_sqlite_columns() -> None:
             if col not in build_existing:
                 logger.debug("Adding build column %s", col)
                 conn.exec_driver_sql(f"ALTER TABLE build ADD COLUMN {col} {ddl}")
+
+        target_existing = {
+            row[1]
+            for row in conn.exec_driver_sql("PRAGMA table_info(trackedtarget)")
+        }
+        for col, ddl in tracked_target_columns.items():
+            if col not in target_existing:
+                logger.debug("Adding trackedtarget column %s", col)
+                conn.exec_driver_sql(f"ALTER TABLE trackedtarget ADD COLUMN {col} {ddl}")
+
+        user_existing = {
+            row[1]
+            for row in conn.exec_driver_sql("PRAGMA table_info(user)")
+        }
+        for col, ddl in user_columns.items():
+            if col not in user_existing:
+                logger.debug("Adding user column %s", col)
+                conn.exec_driver_sql(f"ALTER TABLE user ADD COLUMN {col} {ddl}")

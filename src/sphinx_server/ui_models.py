@@ -9,6 +9,7 @@ class TrackedTargetElement(BaseModel):
     auto_build: bool
     last_sha: str | None = None
     created_at: str
+    environment_manager: str | None = None
 
 
 class RepositoryElement(BaseModel):
