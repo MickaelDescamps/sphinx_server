@@ -61,11 +61,6 @@ def create_app() -> FastAPI:
 
     static_dir = Path(__file__).resolve().parent / "web" / "static"
     app.mount("/assets", StaticFiles(directory=str(static_dir)), name="assets")
-    app.mount(
-        "/artifacts",
-        StaticFiles(directory=str(settings.build_output_dir), html=True),
-        name="artifacts",
-    )
 
     return app
 

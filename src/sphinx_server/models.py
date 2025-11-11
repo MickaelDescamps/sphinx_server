@@ -64,6 +64,7 @@ class Repository(SQLModel, table=True):
     description: Optional[str] = None
     default_branch: Optional[str] = None
     docs_path: str = "docs"
+    public_docs: bool = Field(default=False, description="Allow docs to be viewed without authentication")
     auth_token: Optional[str] = Field(default=None, description="Personal access token if required")
     deploy_key: Optional[str] = Field(default=None, description="SSH deploy key for private clones")
     verify_ssl: bool = True

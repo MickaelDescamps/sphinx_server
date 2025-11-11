@@ -6,6 +6,7 @@
 <p><strong>URL:</strong> <a href="{{ repo.url }}" target="_blank">{{ repo.url }}</a></p>
 <p><strong>Provider:</strong> {{ provider_badge(repo.provider) }}</p>
 <p><strong>Docs path:</strong> {{ repo.docs_path }}</p>
+<p><strong>Docs visibility:</strong> {{ "Public" if repo.public_docs else "Restricted (login required)" }}</p>
 
 <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center;">
     <a class="button" href="/admin/repos/{{ repo.id }}/edit">Edit repository</a>

@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -13,7 +14,7 @@ from concurrent.futures import ProcessPoolExecutor
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 try:
     import tomllib
@@ -29,6 +30,8 @@ from .models import Build, BuildStatus, RefType, Repository, TrackedTarget
 from .time_utils import format_local_datetime
 
 logger = logging.getLogger(__name__)
+DOC_DEPENDENCY_KEYS = {"docs", "doc", "documentation", "dev"}
+PY_VERSION_PATTERN = re.compile(r"(\d+(?:\.\d+){0,2})")
 
 
 class BuildExecutor:
@@ -289,12 +292,17 @@ def _install_repo_dependencies(
     """
     pyproject = repo_path / "pyproject.toml"
     if pyproject.exists():
-        extras = _detect_optional_extras(pyproject)
+        pyproject_data = _load_pyproject(pyproject)
+        extras = _detect_optional_extras(pyproject_data)
         spec = "."
         if extras:
             spec = f".[{','.join(extras)}]"
         logger.debug("Installing repo dependencies %s with extras %s", repo_path, extras)
         _pip_install(log_path, python_bin, [spec], installer=installer, cwd=repo_path)
+        group_requirements = _poetry_group_requirements(pyproject_data, repo_path)
+        if group_requirements:
+            logger.debug("Installing Poetry group dependencies: %s", group_requirements)
+            _pip_install(log_path, python_bin, group_requirements, installer=installer, cwd=repo_path)
 
     req_candidates = [
         repo_path / "requirements.txt",
@@ -389,6 +397,10 @@ def _run_command(
 def _resolve_pyenv_python_version(repo_path: Path) -> str:
     """Return the Python version to request from pyenv for this repo."""
 
+    pyproject_version = _python_version_from_pyproject(repo_path)
+    if pyproject_version:
+        return pyproject_version
+
     version_file = repo_path / ".python-version"
     if version_file.exists():
         version = version_file.read_text(encoding="utf-8").strip()
@@ -404,25 +416,194 @@ def _resolve_pyenv_python_version(repo_path: Path) -> str:
     )
 
 
-def _detect_optional_extras(pyproject: Path) -> list[str]:
-    """Determine which optional dependency extras correspond to docs builds.
-
-    :param pyproject: Path to ``pyproject.toml``.
-    :returns: List of extras (``docs``, ``doc``, ``documentation``, ``dev``) found.
-    """
+def _load_pyproject(pyproject: Path) -> dict[str, Any]:
+    """Parse the pyproject.toml file into a dictionary."""
     try:
-        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        return tomllib.loads(pyproject.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError):
+        return {}
+
+
+def _python_version_from_pyproject(repo_path: Path) -> str | None:
+    """Extract the desired Python version from pyproject metadata if available."""
+    pyproject = repo_path / "pyproject.toml"
+    if not pyproject.exists():
+        return None
+    data = _load_pyproject(pyproject)
+    project = data.get("project", {})
+    requires_python = project.get("requires-python")
+    version = _first_version_token(requires_python) if isinstance(requires_python, str) else None
+    if version:
+        return version
+
+    poetry = data.get("tool", {}).get("poetry", {})
+    deps = poetry.get("dependencies")
+    if isinstance(deps, dict):
+        py_dep = deps.get("python")
+        if isinstance(py_dep, str):
+            version = _first_version_token(py_dep)
+        elif isinstance(py_dep, dict):
+            version_str = py_dep.get("version")
+            if isinstance(version_str, str):
+                version = _first_version_token(version_str)
+            else:
+                version = None
+        if version:
+            return version
+    return None
+
+
+def _first_version_token(spec: str | None) -> str | None:
+    """Return the first numeric version token found in the provided spec string."""
+    if not spec:
+        return None
+    match = PY_VERSION_PATTERN.search(spec)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _detect_optional_extras(pyproject_data: dict[str, Any]) -> list[str]:
+    """Determine which optional dependency extras correspond to docs builds."""
+    desired = DOC_DEPENDENCY_KEYS
+    extras: set[str] = set()
+
+    optional = pyproject_data.get("project", {}).get("optional-dependencies", {})
+    if isinstance(optional, dict):
+        for key in optional:
+            if key.lower() in desired:
+                extras.add(key)
+
+    poetry_extras = pyproject_data.get("tool", {}).get("poetry", {}).get("extras", {})
+    if isinstance(poetry_extras, dict):
+        for key in poetry_extras:
+            if key.lower() in desired:
+                extras.add(key)
+
+    return sorted(extras)
+
+
+def _poetry_group_requirements(pyproject_data: dict[str, Any], repo_path: Path) -> list[str]:
+    """Collect dependency specs declared under Poetry dependency groups."""
+    groups = (
+        pyproject_data.get("tool", {})
+        .get("poetry", {})
+        .get("group", {})
+    )
+    if not isinstance(groups, dict):
         return []
-    optional = data.get("project", {}).get("optional-dependencies", {})
-    if not isinstance(optional, dict):
-        return []
-    desired = {"docs", "doc", "documentation", "dev"}
-    extras: list[str] = []
-    for key in optional:
-        if key.lower() in desired:
-            extras.append(key)
-    return extras
+    requirements: list[str] = []
+    for name, group_info in groups.items():
+        if not isinstance(group_info, dict) or name.lower() not in DOC_DEPENDENCY_KEYS:
+            continue
+        deps = group_info.get("dependencies")
+        if not isinstance(deps, dict):
+            continue
+        for dep_name, dep_spec in deps.items():
+            requirement = _convert_poetry_dependency(dep_name, dep_spec, repo_path)
+            if requirement:
+                requirements.append(requirement)
+    return requirements
+
+
+def _convert_poetry_dependency(name: str, spec: Any, repo_path: Path) -> str | None:
+    """Translate a Poetry dependency declaration into a pip-compatible spec."""
+    extras_suffix = ""
+    version_spec = ""
+
+    def _format_name(base: str) -> str:
+        return f"{base}{extras_suffix}{version_spec}"
+
+    if isinstance(spec, str):
+        version_spec = _translate_poetry_version(spec)
+        return _format_name(name)
+
+    if isinstance(spec, dict):
+        extras = spec.get("extras")
+        if isinstance(extras, list) and extras:
+            extras_suffix = "[" + ",".join(extras) + "]"
+
+        if "git" in spec:
+            return _format_git_dependency(f"{name}{extras_suffix}", spec)
+
+        if "path" in spec:
+            path_value = Path(spec["path"])
+            if not path_value.is_absolute():
+                path_value = (repo_path / path_value).resolve()
+            return str(path_value)
+
+        version_value = spec.get("version")
+        if isinstance(version_value, str):
+            version_spec = _translate_poetry_version(version_value)
+            return _format_name(name)
+
+        if version_value in (None, "*"):
+            return _format_name(name)
+
+    logger.debug("Skipping unsupported Poetry dependency for %s: %s", name, spec)
+    return None
+
+
+def _format_git_dependency(name_with_extras: str, spec: dict[str, Any]) -> str | None:
+    """Convert a Poetry git dependency to a pip requirement string."""
+    git_url = spec.get("git")
+    if not isinstance(git_url, str):
+        return None
+    ref = spec.get("rev") or spec.get("tag") or spec.get("branch")
+    requirement = f"{name_with_extras} @ git+{git_url}"
+    if ref:
+        requirement += f"@{ref}"
+    return requirement
+
+
+def _translate_poetry_version(constraint: str) -> str:
+    """Translate Poetry's version constraint syntax to pip-compatible specifiers."""
+    spec = constraint.strip()
+    if not spec or spec == "*":
+        return ""
+    if spec.startswith("^"):
+        base = spec[1:].strip()
+        if not base:
+            return ""
+        upper = _increment_caret_upper_bound(base)
+        return f">={base},<{upper}"
+    if spec.startswith("~"):
+        base = spec[1:].strip()
+        if not base:
+            return ""
+        return f"~={base}"
+    if any(spec.startswith(op) for op in (">", "<", "=", "!", "~")) or "," in spec:
+        return spec
+    if spec[0].isdigit():
+        return f"=={spec}"
+    return spec
+
+
+def _increment_caret_upper_bound(version: str) -> str:
+    """Calculate the exclusive upper bound for a caret constraint."""
+    def _parse_int(part: str) -> int:
+        digits = ""
+        for char in part:
+            if char.isdigit():
+                digits += char
+            else:
+                break
+        return int(digits) if digits else 0
+
+    parts = [_parse_int(p) for p in version.split(".")]
+    while len(parts) < 3:
+        parts.append(0)
+    major, minor, patch = parts[:3]
+    if major:
+        major += 1
+        minor = 0
+        patch = 0
+    elif minor:
+        minor += 1
+        patch = 0
+    else:
+        patch += 1
+    return ".".join(str(x) for x in (major, minor, patch))
 
 
 def _inject_navigation_links(

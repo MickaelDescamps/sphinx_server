@@ -7,14 +7,15 @@ from collections import defaultdict
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 
 from sphinx_server.model_converter import convert_build_to_ui_model
 
-from ..auth import require_user
+from ..auth import get_optional_user, require_user
+from ..config import settings
 from ..database import get_session
 from ..models import Build, Repository, TrackedTarget
 
@@ -30,8 +31,24 @@ def docs_index(request: Request, session: Session = Depends(get_session)):
     """Render the documentation landing page with latest builds per target."""
     logger.debug("Rendering docs index")
     repo_stmt = select(Repository).options(selectinload(Repository.tracked_targets))
-    repos = session.exec(repo_stmt).all()
-    builds = session.exec(select(Build).order_by(Build.created_at.desc())).all()
+    all_repos = session.exec(repo_stmt).all()
+    user = get_optional_user(request)
+    if user:
+        visible_repos = all_repos
+    else:
+        visible_repos = [repo for repo in all_repos if repo.public_docs]
+        if not visible_repos:
+            require_user(request=request, session=session)
+    allowed_repo_ids = {repo.id for repo in visible_repos}
+    builds: list[Build] = []
+    if allowed_repo_ids:
+        repo_ids_tuple = tuple(allowed_repo_ids)
+        build_stmt = (
+            select(Build)
+            .where(Build.repository_id.in_(repo_ids_tuple))
+            .order_by(Build.created_at.desc())
+        )
+        builds = session.exec(build_stmt).all()
     latest_artifacts = _latest_artifacts(builds)
     build_map: dict[int, list[Build]] = defaultdict(list)
     for build in builds:
@@ -41,7 +58,7 @@ def docs_index(request: Request, session: Session = Depends(get_session)):
         "docs/index.html",
         {
             "request": request,
-            "repos": repos,
+            "repos": visible_repos,
             "build_map": build_map,
             "latest_artifacts": latest_artifacts,
         },
@@ -49,7 +66,7 @@ def docs_index(request: Request, session: Session = Depends(get_session)):
 
 
 @router.get("/docs/{repo_id}/refs.json")
-def repo_refs(repo_id: int, session: Session = Depends(get_session)):
+def repo_refs(repo_id: int, request: Request, session: Session = Depends(get_session)):
     """Return JSON describing tracked refs and their latest artifacts."""
     repo = session.exec(
         select(Repository).where(Repository.id == repo_id).options(selectinload(Repository.tracked_targets))
@@ -57,6 +74,7 @@ def repo_refs(repo_id: int, session: Session = Depends(get_session)):
     if not repo:
         logger.error("Repo %s not found when requesting refs", repo_id)
         raise HTTPException(status_code=404)
+    _ensure_repo_docs_access(repo, request, session)
     builds = session.exec(
         select(Build)
         .where(Build.repository_id == repo_id)
@@ -87,6 +105,7 @@ def target_docs(repo_id: int, target_id: int, request: Request, session: Session
     if not repo or not target or target.repository_id != repo_id:
         logger.error("Repo %s or target %s missing for docs view", repo_id, target_id)
         raise HTTPException(status_code=404)
+    _ensure_repo_docs_access(repo, request, session)
     build_stmt = (
         select(Build)
         .where(Build.target_id == target_id)
@@ -104,6 +123,45 @@ def target_docs(repo_id: int, target_id: int, request: Request, session: Session
     )
 
 
+@router.get("/artifacts/{repo_id}")
+def artifact_index(repo_id: int, request: Request, session: Session = Depends(get_session)):
+    """Serve artifact directory index by defaulting to index.html."""
+    return artifact_file(repo_id, "", request, session)
+
+
+@router.get("/artifacts/{repo_id}/{requested_path:path}")
+def artifact_file(
+    repo_id: int,
+    requested_path: str,
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    """Serve generated documentation files with access control."""
+    repo = session.get(Repository, repo_id)
+    if not repo:
+        logger.error("Repo %s not found when serving artifact %s", repo_id, requested_path)
+        raise HTTPException(status_code=404, detail="Repository not found")
+    _ensure_repo_docs_access(repo, request, session)
+    base_dir = (settings.build_output_dir / str(repo_id)).resolve()
+    if not base_dir.exists():
+        raise HTTPException(status_code=404, detail="Artifact directory missing")
+    relative = Path(requested_path) if requested_path else Path()
+    target_path = (base_dir / relative).resolve()
+    try:
+        target_path.relative_to(base_dir)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Invalid artifact path")
+    if not requested_path or requested_path.endswith("/") or target_path.is_dir():
+        target_path = (base_dir / relative / "index.html").resolve()
+        try:
+            target_path.relative_to(base_dir)
+        except ValueError:
+            raise HTTPException(status_code=403, detail="Invalid artifact path")
+    if not target_path.exists():
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return FileResponse(target_path)
+
+
 def _latest_artifacts(builds: list[Build]) -> dict[int, Build]:
     """Map target ids to the most recent successful build containing artifacts."""
     latest: dict[int, Build] = {}
@@ -113,3 +171,10 @@ def _latest_artifacts(builds: list[Build]) -> dict[int, Build]:
         if build.artifact_path:
             latest[build.target_id] = build
     return latest
+
+
+def _ensure_repo_docs_access(repo: Repository, request: Request, session: Session) -> None:
+    """Ensure the requester can view documentation for the repository."""
+    if repo.public_docs:
+        return
+    require_user(request=request, session=session)
