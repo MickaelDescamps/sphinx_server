@@ -119,6 +119,8 @@ def login_action(
     return RedirectResponse(url=redirect_url, status_code=303)
 
 
+
+
 @router.post("/logout")
 def logout_action(request: Request):
     """Destroy the current session and redirect to login."""

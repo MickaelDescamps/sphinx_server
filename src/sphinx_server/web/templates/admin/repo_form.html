@@ -15,6 +15,10 @@
     <label>Description<textarea name="description">{{ repo.description if repo else '' }}</textarea></label>
     <label>Default branch<input type="text" name="default_branch" placeholder="main" value="{{ repo.default_branch if repo else '' }}"></label>
     <label>Docs path<input type="text" name="docs_path" value="{{ repo.docs_path if repo else 'docs' }}"></label>
+    <label style="display:flex; gap:0.5rem; align-items:center;">
+        <input type="checkbox" name="public_docs" {% if repo and repo.public_docs %}checked{% endif %}>
+        <span>Allow anyone to view generated documentation without logging in</span>
+    </label>
     <label>Access token<input type="password" name="auth_token" value="{{ repo.auth_token if repo else '' }}"></label>
     <label>Deploy key (SSH)
         <textarea name="deploy_key" id="deploy-key" placeholder="Paste private key"></textarea>

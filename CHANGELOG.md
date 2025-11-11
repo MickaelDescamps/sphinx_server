@@ -5,6 +5,20 @@ All notable changes to `sphinx-server` are documented here.
 The project adheres to [Semantic Versioning](https://semver.org/) and to [keep a changelog project](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
+### Added
+
+### Changed
+
+### Removed
+
+### Deprecated
+
+### Fixed
+
+### Security
+
+
+## [0.1.3] 2025-11-11
 
 ### Added
 - build start time in admin list of build
@@ -16,6 +30,7 @@ The project adheres to [Semantic Versioning](https://semver.org/) and to [keep a
 - Forced password changes on first login (bootstrap `admin` / `password` account and admin-issued resets now require updating credentials before accessing other pages).
 - Support detecting docs/dev extras declared via Poetry v1 (`[tool.poetry.extras]`) and Poetry dependency groups (`[tool.poetry.group.<name>.dependencies]`) so those optional dependencies are installed automatically during builds.
 - pyenv builds now respect the Python version declared in `pyproject.toml` (`project.requires-python` or Poetry’s `python` dependency) before falling back to `.python-version` or the global default.
+- Repository-level toggle to expose documentation publicly; artifact downloads now share the same access control, so private repos stay hidden unless a user signs in.
 
 ### Changed
 - display time in local time
@@ -23,12 +38,13 @@ The project adheres to [Semantic Versioning](https://semver.org/) and to [keep a
 ### Removed
 
 - `SPHINX_SERVER_DEFAULT_ADMIN_USERNAME` / `SPHINX_SERVER_DEFAULT_ADMIN_PASSWORD` environment variables (the bootstrap admin is always `admin` / `password` and is flagged for a mandatory password change).
-### Deprecated
 
 ### Fixed
 - Missing `itsdangerous` dependency required by the new session middleware.
 
-### Security
+
+## [0.1.2] - 2025-11-10
+Missing CHANGELOG
 
 
 ## [0.1.1] - 2025-11-09

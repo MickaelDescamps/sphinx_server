@@ -226,6 +226,7 @@ async def create_repo(
     description: Annotated[str | None, Form()] = None,
     default_branch: Annotated[str | None, Form()] = None,
     docs_path: Annotated[str, Form()] = "docs",
+    public_docs: Annotated[bool | None, Form()] = False,
     auth_token: Annotated[str | None, Form()] = None,
     deploy_key: Annotated[str | None, Form()] = None,
     session: Session = Depends(get_session),
@@ -240,6 +241,7 @@ async def create_repo(
         description=description,
         default_branch=default_branch,
         docs_path=docs_path or "docs",
+        public_docs=bool(public_docs),
         auth_token=auth_token,
         deploy_key=cleaned_key,
     )
@@ -279,6 +281,7 @@ async def update_repo(
     description: Annotated[str | None, Form()] = None,
     default_branch: Annotated[str | None, Form()] = None,
     docs_path: Annotated[str, Form()] = "docs",
+    public_docs: Annotated[bool | None, Form()] = False,
     auth_token: Annotated[str | None, Form()] = None,
     deploy_key: Annotated[str | None, Form()] = None,
     session: Session = Depends(get_session),
@@ -293,6 +296,7 @@ async def update_repo(
     repo.description = description
     repo.default_branch = default_branch
     repo.docs_path = docs_path or "docs"
+    repo.public_docs = bool(public_docs)
     repo.auth_token = auth_token
     if deploy_key is not None and deploy_key.strip() != "":
         repo.deploy_key = deploy_key.strip()

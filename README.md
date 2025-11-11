@@ -13,6 +13,7 @@ Sphinx Server is a lightweight control plane that keeps track of documentation r
 - When using pyenv-managed builds, the server honors `pyproject.toml` Python requirements (`project.requires-python` or Poetry’s `python` dependency) before falling back to `.python-version` or the global default, ensuring docs build with the expected interpreter.
 - Track any number of branches or tags per repository.
 - Role-based authentication with viewer / contributor / administrator permissions, including per-user password management, enforced first-login password changes, and an admin user directory.
+- Mark repositories as public to expose their documentation/artifacts without signing in, while keeping other repos private behind authentication.
 - Edit or delete repositories later and manage tracked branches/tags directly from the administrator UI.
 - Kick off builds manually from the administrator UI; the worker logs git + Sphinx output per build and exposes the logs in the browser.
 - Clean stale build artifacts/log files from the UI to keep storage tidy.

@@ -49,6 +49,7 @@ def _ensure_sqlite_columns() -> None:
         "project_homepage": "TEXT",
         "primary_target_id": "INTEGER",
         "deploy_key": "TEXT",
+        "public_docs": "BOOLEAN DEFAULT 0",
     }
     build_columns = {
         "duration_seconds": "REAL",
