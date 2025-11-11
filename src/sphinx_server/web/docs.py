@@ -19,7 +19,7 @@ from ..config import settings
 from ..database import get_session
 from ..models import Build, Repository, TrackedTarget
 
-router = APIRouter(tags=["docs"])
+router = APIRouter(tags=["docs"], dependencies=[Depends(require_user)])
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
