@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     environment_manager: Literal["uv", "pyenv"] = "uv"
     pyenv_default_python_version: str = "3.11.8"
     secret_key: str = "change-me"
+    docs_link_new_tab: bool = False
 
     @property
     def db_url(self) -> str:

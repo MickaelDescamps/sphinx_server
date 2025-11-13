@@ -61,6 +61,7 @@ def docs_index(request: Request, session: Session = Depends(get_session)):
             "repos": visible_repos,
             "build_map": build_map,
             "latest_artifacts": latest_artifacts,
+            "docs_link_new_tab": settings.docs_link_new_tab,
         },
     )
 

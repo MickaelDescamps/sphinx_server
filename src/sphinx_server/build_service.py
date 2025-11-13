@@ -167,6 +167,7 @@ def _process_build(build_id: int) -> None:
                 target,
                 version_hint,
                 completion_time,
+                local_settings.docs_link_new_tab,
             )
 
             build.status = BuildStatus.success
@@ -623,6 +624,7 @@ def _inject_navigation_links(
     target: TrackedTarget,
     repo_version: str,
     built_at: datetime,
+    open_new_tab: bool,
 ) -> None:
     """Append navigation metadata/script tags to generated HTML pages.
 
@@ -631,6 +633,7 @@ def _inject_navigation_links(
     :param target: Target metadata describing the ref being built.
     :param repo_version: Fallback version string to surface in the UI.
     :param built_at: Completion timestamp for the rendered artifact.
+    :param open_new_tab: Whether the Docs explorer link should open in a new tab.
     """
     build_date = format_local_datetime(built_at)
     script_payload = {
@@ -644,6 +647,23 @@ def _inject_navigation_links(
     js_assignments = ";".join(
         [f"window.__SPHINX_SERVER_{key}={json.dumps(value)}" for key, value in script_payload.items()]
     )
+    link_target = "_blank" if open_new_tab else "_self"
+    rel_attr = ' rel="noopener"' if open_new_tab else ""
+    nav_link = (
+        "<style id=\"sphinx-server-docs-link-style\">"
+        "#sphinx-server-docs-link{"
+        "position:fixed;bottom:16px;right:16px;z-index:10000;"
+        "background:#111;color:#fff;padding:0.5rem 1rem;border-radius:999px;"
+        "text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"
+        "font-size:0.9rem;box-shadow:0 4px 12px rgba(0,0,0,0.25);"
+        "transition:background 0.2s ease;"
+        "}"
+        "#sphinx-server-docs-link:hover{background:#000;color:#fff;}"
+        "@media (max-width: 600px){#sphinx-server-docs-link{bottom:12px;right:12px;font-size:0.8rem;}}"
+        "@media print{#sphinx-server-docs-link{display:none;}}"
+        "</style>"
+        f'<a id="sphinx-server-docs-link" href="/" aria-label="Return to docs explorer" target="{link_target}"{rel_attr}>← Docs explorer</a>\n'
+    )
     script = (
         f"<script>window.__SPHINX_SERVER_NAV=1;{js_assignments};</script>\n"
         '<script defer src="/assets/sphinx-nav.js"></script>\n'
@@ -653,14 +673,21 @@ def _inject_navigation_links(
             contents = html_file.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
-        if "__SPHINX_SERVER_NAV" in contents:
+        needs_link = "id=\"sphinx-server-docs-link\"" not in contents
+        needs_script = "__SPHINX_SERVER_NAV" not in contents
+        if not needs_link and not needs_script:
             continue
         lower = contents.lower()
         marker = "</body>"
         idx = lower.rfind(marker)
         if idx == -1:
             continue
-        contents = contents[:idx] + script + contents[idx:]
+        injection = ""
+        if needs_link:
+            injection += nav_link
+        if needs_script:
+            injection += script
+        contents = contents[:idx] + injection + contents[idx:]
         html_file.write_text(contents, encoding="utf-8")
 
 

@@ -45,6 +45,10 @@
         <label>Auto-build interval (seconds)
             <input type="number" name="auto_build_interval_seconds" value="{{ settings_obj.auto_build_interval_seconds }}" min="10" required>
         </label>
+        <label>
+            <input type="checkbox" name="docs_link_new_tab" {% if settings_obj.docs_link_new_tab %}checked{% endif %}>
+            Open Docs explorer link in a new tab
+        </label>
     </fieldset>
     <button type="submit">Save settings</button>
 </form>

@@ -50,6 +50,7 @@ SETTINGS_ENV_MAP = {
     "sphinx_timeout": "SPHINX_SERVER_SPHINX_TIMEOUT",
     "build_processes": "SPHINX_SERVER_BUILD_PROCESSES",
     "auto_build_interval_seconds": "SPHINX_SERVER_AUTO_BUILD_INTERVAL_SECONDS",
+    "docs_link_new_tab": "SPHINX_SERVER_DOCS_LINK_NEW_TAB",
 }
 
 
@@ -164,11 +165,13 @@ async def update_settings(
     build_processes: Annotated[int, Form(...)],
     auto_build_interval_seconds: Annotated[int, Form(...)],
     reload_flag: Annotated[str | None, Form()] = None,
+    docs_link_new_tab: Annotated[str | None, Form()] = None,
     _: None = Depends(require_admin),
 ):
     """Persist the submitted settings to the .env file and runtime."""
     env_manager = _resolve_environment_manager(environment_manager) or settings.environment_manager
     reload_enabled = bool(reload_flag)
+    docs_link_new_tab_enabled = bool(docs_link_new_tab)
     data_dir_path = Path(data_dir).expanduser()
 
     runtime_updates = {
@@ -182,6 +185,7 @@ async def update_settings(
         "sphinx_timeout": int(sphinx_timeout),
         "build_processes": int(build_processes),
         "auto_build_interval_seconds": int(auto_build_interval_seconds),
+        "docs_link_new_tab": docs_link_new_tab_enabled,
     }
 
     env_updates = {
@@ -195,6 +199,7 @@ async def update_settings(
         SETTINGS_ENV_MAP["sphinx_timeout"]: str(runtime_updates["sphinx_timeout"]),
         SETTINGS_ENV_MAP["build_processes"]: str(runtime_updates["build_processes"]),
         SETTINGS_ENV_MAP["auto_build_interval_seconds"]: str(runtime_updates["auto_build_interval_seconds"]),
+        SETTINGS_ENV_MAP["docs_link_new_tab"]: "true" if docs_link_new_tab_enabled else "false",
     }
 
     persist_env_settings(env_updates)

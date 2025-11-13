@@ -27,7 +27,7 @@
                         <span class="primary-chip">Primary</span>
                     {% endif %}
                     {% if latest %}
-                        - <a href="/artifacts/{{ repo.id }}/{{ target.slug() }}/index.html" target="_blank">Open docs</a>
+                        - <a href="/artifacts/{{ repo.id }}/{{ target.slug() }}/index.html" {% if docs_link_new_tab %}target="_blank" rel="noopener"{% endif %}>Open docs</a>
                         (<a href="/docs/{{ repo.id }}/{{ target.id }}">{{ builds|length }} builds</a>)
                     {% else %}
                         - no builds yet
