@@ -21,6 +21,23 @@ class GitError(RuntimeError):
     """Error raised when an underlying git command fails."""
 
 
+_TRACE_ENV_VARS = {
+    "GIT_TRACE": "1",
+    "GIT_TRACE_PACKET": "1",
+    "GIT_TRACE_PERFORMANCE": "1",
+    "GIT_CURL_VERBOSE": "1",
+}
+
+
+def _git_env(overrides: dict[str, str] | None = None) -> dict[str, str]:
+    """Return the base git environment with tracing enabled."""
+    env = os.environ.copy()
+    env.update(_TRACE_ENV_VARS)
+    if overrides:
+        env.update(overrides)
+    return env
+
+
 def inject_token(url: str, token: str | None) -> str:
     """Inject a personal access token into an HTTPS git URL.
 
@@ -67,7 +84,7 @@ def run_git(
             check=False,
             text=True,
             timeout=timeout or settings.git_default_timeout,
-            env=env,
+            env=_git_env(env),
         )
         if proc.returncode != 0:
             logger.error("git %s failed with %s", " ".join(args), proc.returncode)
@@ -148,7 +165,14 @@ def list_remote_refs(repo_url: str, token: str | None, ref_type: str) -> list[st
     log_file = temp_dir / "git-ls.log"
     cmd = ["git", "ls-remote", flag, inject_token(repo_url, token)]
     with log_file.open("a", encoding="utf-8") as log:
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=False)
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+            env=_git_env(),
+        )
         if proc.returncode != 0:
             log.write(proc.stdout)
             logger.error("git ls-remote failed for %s", repo_url)
@@ -198,7 +222,7 @@ def get_remote_sha(
             stderr=subprocess.PIPE,
             text=True,
             check=False,
-            env=env,
+            env=_git_env(env),
             timeout=settings.git_default_timeout,
         )
         if proc.returncode != 0:
