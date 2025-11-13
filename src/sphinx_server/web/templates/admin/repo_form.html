@@ -11,7 +11,10 @@
             <option value="generic" {% if provider == 'generic' %}selected{% endif %}>Generic Git</option>
         </select>
     </label>
-    <label>Repository URL<input type="url" name="url" value="{{ repo.url if repo else '' }}" required></label>
+    <label>Repository URL
+        <input type="text" name="url" placeholder="https://github.com/org/repo.git or git@host:org/repo.git" value="{{ repo.url if repo else '' }}" required>
+        <small class="muted">HTTPS and SSH remotes are supported; SSH URLs use your system ssh config when no deploy key is provided.</small>
+    </label>
     <label>Description<textarea name="description">{{ repo.description if repo else '' }}</textarea></label>
     <label>Default branch<input type="text" name="default_branch" placeholder="main" value="{{ repo.default_branch if repo else '' }}"></label>
     <label>Docs path<input type="text" name="docs_path" value="{{ repo.docs_path if repo else 'docs' }}"></label>

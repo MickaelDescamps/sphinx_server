@@ -8,7 +8,7 @@ Sphinx Server is a lightweight control plane that keeps track of documentation r
 
 ## Features
 - Register multiple repositories with provider metadata, docs directories, and (optional) access tokens for private clones.
-- Provide per-repository SSH deploy keys when HTTPS tokens aren’t available; keys stay scoped to each repo and are used only for its builds. During installs we also apply the repo’s optional `dev`/`docs` extras so build tooling/plugins are available just like in CI.
+- Provide per-repository SSH deploy keys when HTTPS tokens aren’t available; keys stay scoped to each repo and are used only for its builds. You can also register repositories using SSH remotes (`git@...` or `ssh://...`) to reuse whatever identities/agent your system already trusts, no deploy key required. During installs we also apply the repo’s optional `dev`/`docs` extras so build tooling/plugins are available just like in CI.
 - Automatically detect documentation extras declared via PEP 621 (`[project.optional-dependencies]`), Poetry v1 extras (`[tool.poetry.extras]`), or Poetry dependency groups (`[tool.poetry.group.<name>.dependencies]`) so doc/dev tooling is installed for each build.
 - When using pyenv-managed builds, the server honors `pyproject.toml` Python requirements (`project.requires-python` or Poetry’s `python` dependency) before falling back to `.python-version` or the global default, ensuring docs build with the expected interpreter.
 - Track any number of branches or tags per repository.
