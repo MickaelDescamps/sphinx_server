@@ -572,8 +572,19 @@ def _translate_poetry_version(constraint: str) -> str:
         if not base:
             return ""
         return f"~={base}"
-    if any(spec.startswith(op) for op in (">", "<", "=", "!", "~")) or "," in spec:
+    if any(spec.startswith(op) for op in (">", "<", "=", "!", "~")):
         return spec
+    if "," in spec:
+        normalized: list[str] = []
+        for part in spec.split(","):
+            trimmed = part.strip()
+            if not trimmed:
+                continue
+            if trimmed[0].isdigit():
+                normalized.append(f"=={trimmed}")
+            else:
+                normalized.append(trimmed)
+        return ",".join(normalized)
     if spec[0].isdigit():
         return f"=={spec}"
     return spec
