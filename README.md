@@ -13,6 +13,7 @@ Sphinx Server is a lightweight control plane that keeps track of documentation r
 - When using pyenv-managed builds, the server honors `pyproject.toml` Python requirements (`project.requires-python` or Poetry’s `python` dependency) before falling back to `.python-version` or the global default, ensuring docs build with the expected interpreter.
 - Track any number of branches or tags per repository.
 - Role-based authentication with viewer / contributor / administrator permissions, including per-user password management, enforced first-login password changes, and an admin user directory.
+- Optional LDAP/LDAPS authentication that syncs profile metadata, maps LDAP groups to roles, and defers account management to your directory without storing LDAP users locally.
 - Mark repositories as public to expose their documentation/artifacts without signing in, while keeping other repos private behind authentication.
 - Edit or delete repositories later and manage tracked branches/tags directly from the administrator UI.
 - Kick off builds manually from the administrator UI; the worker logs git + Sphinx output per build and exposes the logs in the browser.
@@ -51,11 +52,41 @@ The service is configured through environment variables (prefix `SPHINX_SERVER_`
 | `SPHINX_SERVER_HOST` | Bind host | `0.0.0.0` |
 | `SPHINX_SERVER_PORT` | Bind port | `8000` |
 | `SPHINX_SERVER_RELOAD` | Enable uvicorn reload (dev) | `false` |
+| `SPHINX_SERVER_SSL_CERTFILE` / `SPHINX_SERVER_SSL_KEYFILE` | Enable HTTPS by pointing to PEM-encoded cert/key files | unset |
+| `SPHINX_SERVER_SSL_KEYFILE_PASSWORD` | Optional key password if the private key is encrypted | unset |
 | `SPHINX_SERVER_DATA_DIR` | Root directory for DB, repos, builds, logs | `<project>/.sphinx_server` |
 | `SPHINX_SERVER_DATABASE_URL` | Custom SQL database URL | `sqlite:///<data_dir>/sphinx_server.db` |
 | `SPHINX_SERVER_ENV_MANAGER` | Default environment backend (`uv` or `pyenv`) when targets don’t override | `uv` |
 | `SPHINX_SERVER_PYENV_DEFAULT_PYTHON_VERSION` | Python version passed to pyenv when repos lack `.python-version` | `3.11.8` |
 | `SPHINX_SERVER_SECRET_KEY` | Secret key for session cookies | `change-me` |
+
+### LDAP / LDAPS authentication
+
+Set `SPHINX_SERVER_AUTH_BACKEND=ldap` to authenticate users against an external directory instead of the built-in password database. When LDAP is enabled:
+
+- Users sign in with their directory credentials (SIMPLE bind) over LDAP or LDAPS.
+- Profile details (full name + email) are synchronized on each login and new accounts are provisioned automatically with `SPHINX_SERVER_LDAP_DEFAULT_ROLE`.
+- Account and user-management forms in the UI become read-only because modifications should happen inside the directory.
+- Optionally set `SPHINX_SERVER_LDAP_ADMIN_GROUP_DN`, `SPHINX_SERVER_LDAP_CONTRIBUTOR_GROUP_DN`, and/or `SPHINX_SERVER_LDAP_VIEWER_GROUP_DN` to map group membership to Sphinx Server roles (the first match wins; defaults are used when no groups match). Use `SPHINX_SERVER_LDAP_GROUP_MEMBER_ATTRIBUTE` and `SPHINX_SERVER_LDAP_GROUP_MEMBER_VALUE_TEMPLATE` to match whatever attribute/value style your directory uses (for example `{username}` with `memberUid`).
+- Authenticated LDAP users are tracked only in the browser session—no user rows are created in the local database.
+
+The following environment variables customize the LDAP integration (see `.env` for commented examples):
+
+| Variable | Description |
+| --- | --- |
+| `SPHINX_SERVER_LDAP_SERVER_URI` | LDAP/LDAPS URI, e.g. `ldaps://ldap.example.com:636` |
+| `SPHINX_SERVER_LDAP_USE_SSL` / `SPHINX_SERVER_LDAP_VERIFY_SSL` | Enable LDAPS and control certificate validation |
+| `SPHINX_SERVER_LDAP_CA_CERT_PATH` | Optional custom CA bundle when verifying certificates |
+| `SPHINX_SERVER_LDAP_BIND_DN` / `SPHINX_SERVER_LDAP_BIND_PASSWORD` | Service account used to search for users (required when no DN template is supplied) |
+| `SPHINX_SERVER_LDAP_USER_BASE_DN` | Base DN for user searches |
+| `SPHINX_SERVER_LDAP_USER_FILTER` | LDAP filter to match usernames (supports `{username}` placeholder) |
+| `SPHINX_SERVER_LDAP_USER_DN_TEMPLATE` | Alternative to search/bind: format string for a direct user DN (e.g. `uid={username},ou=people,dc=example,dc=com`) |
+| `SPHINX_SERVER_LDAP_TIMEOUT` | Connect/search timeout in seconds |
+| `SPHINX_SERVER_LDAP_DEFAULT_ROLE` | Role assigned to new LDAP users (`viewer`, `contributor`, or `administrator`) |
+| `SPHINX_SERVER_LDAP_FULL_NAME_ATTRIBUTE` / `SPHINX_SERVER_LDAP_EMAIL_ATTRIBUTE` | Attribute names used to populate local profile metadata |
+| `SPHINX_SERVER_LDAP_ADMIN_GROUP_DN` / `SPHINX_SERVER_LDAP_CONTRIBUTOR_GROUP_DN` / `SPHINX_SERVER_LDAP_VIEWER_GROUP_DN` | Optional LDAP group DNs whose membership overrides the user role |
+| `SPHINX_SERVER_LDAP_GROUP_MEMBER_ATTRIBUTE` | LDAP attribute used for membership queries (e.g., `member`, `memberUid`, `uniqueMember`) |
+| `SPHINX_SERVER_LDAP_GROUP_MEMBER_VALUE_TEMPLATE` | Format string inserted into the membership filter. Supports `{user_dn}` (default) and `{username}` |
 
 All of these values can be edited manually or via **Admin → Settings**, which writes the updated values back to the `.env` file so they persist across restarts.
 

@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
     reload: bool = False
+    ssl_certfile: str | None = None
+    ssl_keyfile: str | None = None
+    ssl_keyfile_password: str | None = None
 
     data_dir: Path = Field(default_factory=lambda: Path.cwd() / ".sphinx_server")
     repo_cache_subdir: str = "repos"  # legacy cache, no longer used for builds
@@ -45,6 +48,25 @@ class Settings(BaseSettings):
     pyenv_default_python_version: str = "3.11.8"
     secret_key: str = "change-me"
     docs_link_new_tab: bool = False
+    auth_backend: Literal["database", "ldap"] = "database"
+    ldap_server_uri: str | None = None
+    ldap_use_ssl: bool = True
+    ldap_verify_ssl: bool = True
+    ldap_ca_cert_path: str | None = None
+    ldap_bind_dn: str | None = None
+    ldap_bind_password: str | None = None
+    ldap_user_base_dn: str | None = None
+    ldap_user_filter: str = "(uid={username})"
+    ldap_user_dn_template: str | None = None
+    ldap_timeout: int = 10
+    ldap_default_role: Literal["viewer", "contributor", "administrator"] = "viewer"
+    ldap_full_name_attribute: str | None = "cn"
+    ldap_email_attribute: str | None = "mail"
+    ldap_admin_group_dn: str | None = None
+    ldap_contributor_group_dn: str | None = None
+    ldap_viewer_group_dn: str | None = None
+    ldap_group_member_attribute: str = "member"
+    ldap_group_member_value_template: str = "{user_dn}"
 
     @property
     def db_url(self) -> str:
@@ -71,6 +93,10 @@ class Settings(BaseSettings):
     @property
     def workspace_root(self) -> Path:
         return self.data_dir / self.workspace_subdir
+
+    @property
+    def ldap_enabled(self) -> bool:
+        return self.auth_backend == "ldap"
 
     def ensure_dirs(self) -> None:
         """Create all filesystem directories required by the service."""

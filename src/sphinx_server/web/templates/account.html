@@ -14,12 +14,16 @@
     {% if force == "password" or user_obj.must_change_password %}
         <p style="color:#e67e22;">You must change your password before exploring the rest of the application.</p>
     {% endif %}
+    {% if ldap_managed %}
+        <p style="color:#2980b9;">Account is managed by the LDAP server and cannot be changed in this application.</p>
+    {% endif %}
 </section>
 
 <section style="display:flex; gap:2rem; flex-wrap:wrap;">
     <div style="flex:1; min-width:280px;">
         <h3>Profile</h3>
         <form method="post" action="/account/profile">
+            <fieldset {% if ldap_managed %}disabled style="opacity:0.55; filter:grayscale(1);" aria-disabled="true"{% endif %}>
             <label for="full_name">Full name</label>
             <input id="full_name" name="full_name" type="text" value="{{ user_obj.full_name or '' }}">
 
@@ -28,11 +32,13 @@
 
             <p><strong>Username:</strong> {{ user_obj.username }}</p>
             <button type="submit">Save profile</button>
+            </fieldset>
         </form>
     </div>
     <div style="flex:1; min-width:280px;">
         <h3>Change password</h3>
         <form method="post" action="/account/password">
+            <fieldset {% if ldap_managed %}disabled style="opacity:0.55; filter:grayscale(1);" aria-disabled="true"{% endif %}>
             <label for="current_password">Current password</label>
             <input id="current_password" name="current_password" type="password" required>
 
@@ -43,6 +49,7 @@
             <input id="confirm_password" name="confirm_password" type="password" minlength="8" required>
 
             <button type="submit">Update password</button>
+            </fieldset>
         </form>
     </div>
 </section>

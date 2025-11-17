@@ -12,8 +12,12 @@ from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 
 from ..auth import (
+    authenticate_ldap_user,
     get_optional_user,
     hash_password,
+    list_ldap_authorized_users,
+    ldap_backend_enabled,
+    store_ldap_session_user,
     require_admin,
     require_user,
     verify_password,
@@ -52,6 +56,7 @@ def _render_account(
             "error": error,
             "user_obj": user,
             "force": force or ("password" if user.must_change_password else None),
+            "ldap_managed": ldap_backend_enabled(),
         },
     )
 
@@ -62,15 +67,21 @@ def _render_user_admin(
     status: str | None = None,
     error: str | None = None,
 ):
-    users = session.exec(select(User).order_by(User.username)).all()
+    ldap_managed = ldap_backend_enabled()
+    ldap_users = list_ldap_authorized_users() if ldap_managed else None
+    users = []
+    if not ldap_managed:
+        users = session.exec(select(User).order_by(User.username)).all()
     return templates.TemplateResponse(
         "admin/users.html",
         {
             "request": request,
             "users": users,
+            "ldap_users": ldap_users,
             "roles": list(UserRole),
             "status": status,
             "error": error,
+            "ldap_managed": ldap_managed,
         },
     )
 
@@ -95,9 +106,15 @@ def login_action(
 ):
     """Handle login form submission and persist session state."""
     username_clean = username.strip()
-    user = session.exec(select(User).where(User.username == username_clean)).one_or_none()
     safe_next = _safe_next_url(next)
-    if not user or not verify_password(password, user.password_hash):
+    user: User | None = None
+    if ldap_backend_enabled():
+        user = authenticate_ldap_user(username_clean, password)
+    else:
+        user = session.exec(select(User).where(User.username == username_clean)).one_or_none()
+        if not user or not verify_password(password, user.password_hash):
+            user = None
+    if not user:
         return templates.TemplateResponse(
             "auth/login.html",
             {"request": request, "next": safe_next, "error": "Invalid username or password."},
@@ -109,12 +126,15 @@ def login_action(
             {"request": request, "next": safe_next, "error": "Account is disabled."},
             status_code=403,
         )
-    request.session["user_id"] = user.id
-    request.session["role"] = user.role.value
-    user.last_login_at = datetime.utcnow()
-    user.updated_at = datetime.utcnow()
-    session.add(user)
-    session.commit()
+    if ldap_backend_enabled():
+        store_ldap_session_user(request, user)
+    else:
+        request.session["user_id"] = user.id
+        request.session["role"] = user.role.value
+        user.last_login_at = datetime.utcnow()
+        user.updated_at = datetime.utcnow()
+        session.add(user)
+        session.commit()
     redirect_url = "/account?force=password" if user.must_change_password else safe_next
     return RedirectResponse(url=redirect_url, status_code=303)
 
@@ -147,6 +167,8 @@ def update_profile(
     user: User = Depends(require_user),
 ):
     """Update the user's profile metadata."""
+    if ldap_backend_enabled():
+        return _render_account(request, user, error="Account is managed by LDAP and cannot be changed here.")
     user.full_name = (full_name or "").strip() or None
     user.email = (email or "").strip() or None
     user.updated_at = datetime.utcnow()
@@ -165,6 +187,8 @@ def change_password(
     user: User = Depends(require_user),
 ):
     """Allow the logged-in user to update their password."""
+    if ldap_backend_enabled():
+        return _render_account(request, user, error="Account is managed by LDAP and cannot be changed here.")
     if new_password != confirm_password:
         return _render_account(request, user, error="New passwords do not match.")
     if not verify_password(current_password, user.password_hash):
@@ -203,6 +227,8 @@ def create_user(
     _: User = Depends(require_admin),
 ):
     """Create a new user account."""
+    if ldap_backend_enabled():
+        return _render_user_admin(request, session, error="Accounts are managed by LDAP and cannot be modified here.")
     username_clean = username.strip()
     if session.exec(select(User).where(User.username == username_clean)).one_or_none():
         return _render_user_admin(request, session, error="Username already exists.")
@@ -230,6 +256,8 @@ def update_user_role(
     _: User = Depends(require_admin),
 ):
     """Update the role assigned to a user."""
+    if ldap_backend_enabled():
+        return _render_user_admin(request, session, error="Accounts are managed by LDAP and cannot be modified here.")
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -255,6 +283,8 @@ def admin_reset_password(
     _: User = Depends(require_admin),
 ):
     """Allow administrators to reset another user's password."""
+    if ldap_backend_enabled():
+        return _render_user_admin(request, session, error="Accounts are managed by LDAP and cannot be modified here.")
     if len(password) < 8:
         return _render_user_admin(request, session, error="Password must be at least 8 characters long.")
     user = session.get(User, user_id)

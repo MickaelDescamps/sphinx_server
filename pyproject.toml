@@ -21,6 +21,7 @@ dependencies = [
     "sphinx>=7.3",
     "tomli>=2.0; python_version < '3.11'",
     "pydantic>=2.12.4",
+    "ldap3>=2.9",
 ]
 
 [project.scripts]
