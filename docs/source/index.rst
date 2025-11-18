@@ -16,4 +16,8 @@ documentation for details.
    :caption: Contents:
 
    api/index.rst
+   userguide/index.rst
+   CHANGELOG.md
+   README.md
+   
 
