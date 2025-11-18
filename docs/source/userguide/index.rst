@@ -98,6 +98,55 @@ These settings are persisted to ``.env`` when edited in the UI:
 - **HTTPS (SSL)**: set ``SPHINX_SERVER_SSL_CERTFILE`` and ``SPHINX_SERVER_SSL_KEYFILE`` (and ``SPHINX_SERVER_SSL_KEYFILE_PASSWORD`` if needed) to serve the UI over HTTPS.
 - **LDAP settings**: all ``SPHINX_SERVER_LDAP_*`` options listed above are surfaced here when LDAP is active.
 
+Complete settings file example
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Below is a representative ``.env`` you can copy and adjust. Values can also be written through **Admin → Settings**, which persists the file for you.
+
+.. code-block:: ini
+
+   # Core server
+   SPHINX_SERVER_HOST=0.0.0.0
+   SPHINX_SERVER_PORT=8000
+   SPHINX_SERVER_RELOAD=false
+   SPHINX_SERVER_SSL_CERTFILE=/path/to/cert.pem
+   SPHINX_SERVER_SSL_KEYFILE=/path/to/key.pem
+   # SPHINX_SERVER_SSL_KEYFILE_PASSWORD=optional
+   SPHINX_SERVER_SECRET_KEY=change-me
+   SPHINX_SERVER_DATA_DIR=/var/lib/sphinx-server
+
+   # Build/runtime defaults
+   SPHINX_SERVER_ENVIRONMENT_MANAGER=uv  # or pyenv
+   SPHINX_SERVER_PYENV_DEFAULT_PYTHON_VERSION=3.11.8
+   SPHINX_SERVER_GIT_DEFAULT_TIMEOUT=120
+   SPHINX_SERVER_SPHINX_TIMEOUT=600
+   SPHINX_SERVER_BUILD_PROCESSES=5
+   SPHINX_SERVER_AUTO_BUILD_INTERVAL_SECONDS=60
+   SPHINX_SERVER_DOCS_LINK_NEW_TAB=false
+
+   # Authentication backend
+   SPHINX_SERVER_AUTH_BACKEND=database  # or ldap
+
+   # LDAP (only when AUTH_BACKEND=ldap)
+   SPHINX_SERVER_LDAP_SERVER_URI=ldaps://ldap.example.com:636
+   SPHINX_SERVER_LDAP_USE_SSL=true
+   SPHINX_SERVER_LDAP_VERIFY_SSL=true
+   # SPHINX_SERVER_LDAP_CA_CERT_PATH=/etc/ssl/certs/custom-ca.pem
+   SPHINX_SERVER_LDAP_BIND_DN=cn=service,ou=accounts,dc=example,dc=com
+   SPHINX_SERVER_LDAP_BIND_PASSWORD=secret
+   SPHINX_SERVER_LDAP_USER_BASE_DN=ou=people,dc=example,dc=com
+   # SPHINX_SERVER_LDAP_USER_FILTER=(uid={username})
+   # SPHINX_SERVER_LDAP_USER_DN_TEMPLATE=uid={username},ou=people,dc=example,dc=com
+   SPHINX_SERVER_LDAP_TIMEOUT=10
+   SPHINX_SERVER_LDAP_DEFAULT_ROLE=viewer
+   SPHINX_SERVER_LDAP_FULL_NAME_ATTRIBUTE=cn
+   SPHINX_SERVER_LDAP_EMAIL_ATTRIBUTE=mail
+   SPHINX_SERVER_LDAP_ADMIN_GROUP_DN=cn=admins,ou=groups,dc=example,dc=com
+   SPHINX_SERVER_LDAP_CONTRIBUTOR_GROUP_DN=cn=contributors,ou=groups,dc=example,dc=com
+   SPHINX_SERVER_LDAP_VIEWER_GROUP_DN=cn=viewers,ou=groups,dc=example,dc=com
+   SPHINX_SERVER_LDAP_GROUP_MEMBER_ATTRIBUTE=member
+   SPHINX_SERVER_LDAP_GROUP_MEMBER_VALUE_TEMPLATE={user_dn}
+
 
 Command-line usage
 ------------------
