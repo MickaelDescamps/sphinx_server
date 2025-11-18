@@ -17,7 +17,5 @@ documentation for details.
 
    api/index.rst
    userguide/index.rst
-   CHANGELOG.md
-   README.md
    
 
